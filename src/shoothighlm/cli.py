@@ -2,6 +2,7 @@
 shootHighLM CLI — Chinese-first, multi-LLM CLI alternative to Google NotebookLM
 """
 
+import json
 import click
 from rich import print as rprint
 from pathlib import Path
