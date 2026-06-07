@@ -21,7 +21,7 @@ CLI 工具，复刻 Google NotebookLM 核心功能，Ollama 驱动，中文优�
 
 | 用途 | 默认方案 | 备选 | 本地/云 |
 |------|---------|------|--------|
-| Chat LLM | glm-5.1:cloud | qwen3.5:cloud, deepseek-v4-flash:cloud | 云优先 |
+| Chat LLM | qwen3.5:cloud | glm-5.1:cloud, deepseek-v4-flash:cloud | 云优先 |
 | Chat 本地兜底 | qwen3.5:27b | qwen3:32b | 本地 |
 | Vision | qwen3.5:cloud | minimax-m3:cloud (1M上下文) | 云优先 |
 | Vision 本地兜底 | qwen3.5:27b | — | 本地 |
@@ -74,13 +74,33 @@ CLI 工具，复刻 Google NotebookLM 核心功能，Ollama 驱动，中文优�
 | P4 | 视频概述 | 很高 | 先跳过 |
 | P4 | 幻灯片 | 高 | 先跳过 |
 
-## 约束
+## 硬限制与能力边界
 
-- macOS / Linux
-- 无前端
-- 目前只接受 PDF
-- 文件大小/token 限制 TBD (~100MB)
-- 用户机器: 64GB M1 Max MacBook Pro
+| 限制项 | 值 | 说明 |
+|--------|-----|------|
+| 单文件大小 | 50MB | PDF太大解析慢 |
+| 文件夹总大小 | 500MB | 避免embedding时间过长 |
+| 文件数量 | 50个 | 超过影响检索质量 |
+| 总token上限 | 500K tokens | 超过需分批处理 |
+
+### 各模型能力边界与注意事项
+
+| 模型 | 上下文 | 已知限制 | 注意事项 |
+|------|--------|---------|---------|
+| **qwen3.5:cloud** (默认chat) | 256K tokens | 多模态（文字+图片），中文OCR强 | 超过256K需分批；用量中等 |
+| **qwen3.5:27b** (本地兜底) | 256K tokens | 本地跑，中文+视觉 | M1 Max 64GB可用，但长上下文会吃内存，建议<128K |
+| **glm-5.1:cloud** (备选chat) | 未知(估计128K+) | 中文推理极强，纯文本 | 无视觉能力，PDF需先提取文字；用量高 |
+| **deepseek-v4-flash:cloud** (便宜版) | 1M tokens | 超长上下文，推理强 | 用量低（便宜），适合超长文档场景 |
+| **qwen3.5:cloud** (默认vision) | 256K tokens | 中文OCR最强 | 同chat模型，双用途 |
+| **minimax-m3:cloud** (长文档) | 1M (512K保底) | 超长文档/视频 | 用量高，按需启用 |
+| **bge-m3** (embedding) | 8192 tokens/chunk | dense+sparse+colbert | 单chunk限8192，长文档需切分；chunk间重叠200 tokens |
+
+### 测试验证清单（待完成）
+- [ ] qwen3.5:cloud 中文长文档问答质量测试
+- [ ] qwen3.5:cloud PDF OCR 中文准确率测试
+- [ ] bge-m3 中文embedding检索召回率测试
+- [ ] 各模型实际token消耗与用量统计
+- [ ] 单文件50MB / 总500MB 压力测试
 
 ## 云优先原则
 
