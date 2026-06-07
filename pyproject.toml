@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shoothighlm"
+version = "0.1.0-dev"
+description = "Chinese-first, multi-LLM CLI alternative to Google NotebookLM"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Jacky Li", email = "yuanfengli168@gmail.com"}
+]
+keywords = ["notebooklm", "rag", "llm", "pdf", "mindmap", "chinese", "ollama"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
+    "httpx>=0.25.0",
+    "tiktoken>=0.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+rag = [
+    "langchain>=0.1.0",
+    "langchain-community>=0.0.10",
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.2.0",
+]
+pdf = [
+    "docling>=2.0.0",
+    "marker-pdf>=0.2.0",
+    "pypdf>=3.0.0",
+]
+tui = [
+    "textual>=0.50.0",
+]
+mindmap = [
+    "markmap-cli>=0.15.0",
+]
+tts = [
+    "fish-audio-sdk>=0.1.0",
+]
+image = [
+    "replicate>=0.22.0",
+    "playwright>=1.40.0",
+]
+all = [
+    "shoothighlm[rag,pdf,tui,mindmap,tts,image]",
+]
+
+[project.scripts]
+shoot-high = "shoothighlm.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yuanfengli168/shoothighlm"
+Repository = "https://github.com/yuanfengli168/shoothighlm.git"
+Issues = "https://github.com/yuanfengli168/shoothighlm/issues"
+Documentation = "https://github.com/yuanfengli168/shoothighlm#readme"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --cov=shoothighlm"

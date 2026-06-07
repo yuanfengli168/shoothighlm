@@ -1,0 +1,81 @@
+# shootHighLM Configuration
+# Copy to ~/.shoothighlm/config.yaml
+
+models:
+  # Default chat model (cloud)
+  chat: "qwen3.5:cloud"
+  
+  # Local fallback when offline
+  chat_local: "qwen3.5:27b"
+  
+  # Vision model for PDF OCR / image understanding
+  vision: "qwen3.5:cloud"
+  
+  # Embedding model (local only - Ollama Cloud doesn't provide embeddings)
+  embedding: "bge-m3"
+  
+  # Alternative: better quality but larger
+  # embedding: "qwen3-embedding:8b"
+
+# Text-to-Speech for podcast generation
+tts:
+  # Primary: Fish Audio S2 (best Chinese quality)
+  provider: "fish-audio"
+  # api_key: ""  # Set via environment variable FISH_AUDIO_API_KEY
+  
+  # Alternative: Alibaba CosyVoice (better value in China)
+  # provider: "cosyvoice"
+  # api_key: ""  # Set via environment variable COSYVOICE_API_KEY
+
+# Image generation for infographics / hero art
+image:
+  # Provider for AI image generation
+  provider: "replicate"
+  # api_key: ""  # Set via environment variable REPLICATE_API_TOKEN
+  
+  # Default model for decorative images
+  model: "flux-2-flex"
+  
+  # Alternative for Chinese text: Seedream (ByteDance)
+  # model: "seedream-5-lite"
+
+# Hard limits
+limits:
+  max_file_size: "50MB"      # Single PDF limit
+  max_total_size: "500MB"    # Total folder limit
+  max_files: 50              # Number of files
+  max_tokens: 500000         # Total token limit
+
+# Output settings
+output:
+  # Default output directory (relative to notebook or absolute)
+  dir: "./output"
+  
+  # Mind map formats to generate by default
+  mindmap_formats:
+    - "markdown"   # Primary: human-readable
+    - "opml"      # Secondary: tool-compatible
+    - "html"      # Markmap interactive preview
+  
+  # Export additional formats on demand
+  # - "freemind"  # .mm format
+  # - "xmind"     # XMind native
+
+# RAG settings
+rag:
+  # Chunk size for embedding (bge-m3 max is 8192)
+  chunk_size: 4096
+  
+  # Overlap between chunks
+  chunk_overlap: 200
+  
+  # Number of chunks to retrieve for queries
+  top_k: 5
+  
+  # Similarity threshold (0-1)
+  min_similarity: 0.7
+
+# Logging
+logging:
+  level: "info"  # debug, info, warning, error
+  file: "~/.shoothighlm/shoothighlm.log"
