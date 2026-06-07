@@ -166,9 +166,9 @@ See [ranking-board.md](ranking-board.md) for the vision.
 
 ## Status
 
-✅ **Phase 1 MVP Complete** — RAG chat with citations working!
+✅ **Phase 2 P1 Complete** — Mind map + Flashcard generation working!
 
-**Test Coverage:** 46 tests passing, 84% coverage
+**Test Coverage:** 80 tests passing, 90% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|
