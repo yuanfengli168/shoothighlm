@@ -64,8 +64,10 @@ Drop PDFs in a folder, run commands, get output files.
 
 ### 思维导图
 
-- 自建 TUI (Textual/Ink)
-- 键盘导航树形结构 + 回车探索节点 + 分屏 AI 对话
+- ✅ **LLM 提取** — 从 PDF 自动提取层级结构
+- ✅ **导出格式** — Markdown (首选), OPML, HTML (Markmap), JSON
+- ✅ **CLI 命令** — `shoot-high mindmap ./notebook --format <format>`
+- 🚧 **TUI 交互** — 键盘导航树 + 分屏对话（待实现）
 - **蓝海功能** — 无开源工具在 CLI 做此交互 (详见 blueOcean.md)
 
 ### 思维导图导出格式

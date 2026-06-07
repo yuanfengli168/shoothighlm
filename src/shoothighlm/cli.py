@@ -330,10 +330,73 @@ def flashcard(notebook: str, num: int, fmt: str, output: str):
 
 @main.command()
 @click.argument("notebook", type=click.Path(exists=True))
-def podcast(notebook: str):
+@click.option("--duration", "-d", default=5, help="Podcast duration in minutes")
+@click.option("--format", "fmt", type=click.Choice(["markdown", "json"]), default="markdown")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
+@click.option("--host-a", default="Alex", help="Host A name")
+@click.option("--host-b", default="Jamie", help="Host B name")
+def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, host_b: str):
     """Generate podcast from PDFs"""
-    rprint(f"[green]Generating podcast:[/green] {notebook}")
-    rprint("[yellow]Podcast generation coming soon...[/yellow]")
+    from .config import Config
+    from .pdf import parse_pdf
+    from .podcast import PodcastGenerator
+    
+    config = Config()
+    notebook_path = Path(notebook)
+    
+    # Find PDFs
+    pdfs = list(notebook_path.glob("*.pdf"))
+    if not pdfs:
+        rprint("[red]No PDFs found in notebook[/red]")
+        return
+    
+    rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
+    
+    # Initialize generator
+    generator = PodcastGenerator(
+        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
+        host_a_name=host_a,
+        host_b_name=host_b,
+    )
+    
+    try:
+        # Process first PDF (for now)
+        pdf = pdfs[0]
+        rprint(f"[blue]Processing:[/blue] {pdf.name}")
+        
+        text_gen = parse_pdf(pdf)
+        text = next(text_gen, "")
+        
+        if not text:
+            rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
+            return
+        
+        rprint(f"[dim]Generating {duration}-minute podcast script...[/dim]")
+        script = generator.generate(text, title=pdf.stem, duration_minutes=duration)
+        
+        rprint(f"[green]✓ Generated {len(script.segments)} dialogue segments[/green]")
+        
+        # Export based on format
+        if fmt == "markdown":
+            content = script.to_markdown()
+            ext = ".md"
+        elif fmt == "json":
+            content = script.to_json()
+            ext = ".json"
+        
+        # Write to file
+        if output:
+            output_path = Path(output)
+        else:
+            output_dir = notebook_path / "output"
+            output_dir.mkdir(exist_ok=True)
+            output_path = output_dir / f"{pdf.stem}-podcast{ext}"
+        
+        output_path.write_text(content, encoding="utf-8")
+        rprint(f"[green]✓ Podcast script saved to:[/green] {output_path}")
+        
+    finally:
+        generator.close()
 
 
 if __name__ == "__main__":

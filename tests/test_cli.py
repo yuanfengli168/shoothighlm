@@ -125,10 +125,10 @@ def test_flashcard_no_pdfs(runner, temp_notebook):
     assert "No PDFs found" in result.output
 
 
-def test_podcast_stub(runner, temp_notebook):
-    """Test podcast command (stub)"""
+def test_podcast_no_pdfs(runner, temp_notebook):
+    """Test podcast command with no PDFs"""
     runner.invoke(main, ["init", str(temp_notebook)])
     
     result = runner.invoke(main, ["podcast", str(temp_notebook)])
     assert result.exit_code == 0
-    assert "coming soon" in result.output.lower()
+    assert "No PDFs found" in result.output
