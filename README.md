@@ -63,18 +63,16 @@ shootHigh index ./my-books
 # Chat with your books
 shootHigh chat ./my-books
 
-# Generate mind map (TUI interactive)
+# Generate mind map (primary: Markdown)
 shootHigh mindmap ./my-books
 
-# Generate mind map (HTML interactive, clickable)
+# Generate mind map (interactive HTML preview)
 shootHigh mindmap ./my-books --format html
 
-# Export mind map to OPML (importable in XMind, MindManager, etc.)
+# Export to specific format
 shootHigh mindmap ./my-books --export opml
-
-# Export to other formats
+shootHigh mindmap ./my-books --export freemind
 shootHigh mindmap ./my-books --export xmind
-shootHigh mindmap ./my-books --export markdown
 
 # Generate flashcards
 shootHigh flashcard ./my-books

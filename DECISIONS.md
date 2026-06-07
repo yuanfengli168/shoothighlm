@@ -69,19 +69,19 @@ Drop PDFs in a folder, run commands, get output files.
 
 ### 思维导图导出格式
 
-| 格式 | 说明 | 兼容软件 |
-|------|------|---------|
-| Markdown (默认) | 层级缩进，通用性最强 | 几乎所有工具 |
-| OPML | 思维导图标准交换格式 | XMind, MindManager, FreeMind, MindNode 等 |
-| Mermaid | 代码即图表 | VS Code, GitHub, 文档工具 |
-| HTML (交互) | mermaid.js 渲染，可点击节点 | 浏览器 |
-| XMind (.xmind) | XMind 原生格式 | XMind |
-| FreeMind (.mm) | 老牌开源格式 | FreeMind, XMind(导入) |
-| MindManager (.mmap) | 商业格式 | MindManager |
+| 格式 | 角色 | 说明 | 兼容软件 |
+|------|------|------|---------|
+| **Markdown** | **首选** | 人可读、可编辑、Git友好，不装软件也有价值 | Obsidian, XMind, MindNode, SimpleMind, iThoughts |
+| OPML | 次选 | 思维导图界"CSV"，7/8工具可导入 | XMind, MindManager, MindNode, FreeMind, MindMaster, SimpleMind, iThoughts |
+| FreeMind (.mm) | 三选 | 遗留但广泛支持的交换格式 | XMind, Freeplane, MindMaster, SimpleMind, iThoughts |
+| HTML (Markmap) | 渲染 | 浏览器交互预览，可点击展开 | 任何浏览器 |
+| JSON | 内部 | 编程用结构化数据 | 开发者 |
+| XMind (.xmind) | 后续 | ZIP+JSON，生成复杂度高 | XMind, iThoughts |
+| MindManager (.mmap) | ❌ 跳过 | 私有格式，无法正确生成 | — |
 
-- 优先支持 OPML — 这是思维导图界的"CSV"，几乎所有软件都能导入
-- Markdown 导出作为通用后备
-- HTML 交互版作为在线预览
+- **首选 Markdown** — 即使不用思维导图软件，它本身就是有价值的读书笔记
+- OPML 自动随 Markdown 一起生成（不额外费事）
+- HTML Markmap 版提供即时可视化
 
 ## 功能优先级
 
