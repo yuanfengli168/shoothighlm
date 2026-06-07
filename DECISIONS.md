@@ -4,16 +4,24 @@
 
 ## Vision
 
-CLI 工具，复刻 Google NotebookLM 核心功能，Ollama 驱动，中文优先。
-放 PDF 进文件夹，跑命令，出结果文件。
+CLI tool replicating Google NotebookLM's core features, multi-LLM, Chinese-first.
+Drop PDFs in a folder, run commands, get output files.
 
 ## Key Differentiators vs NotebookLM
 
 1. **中文优先** — NotebookLM 被批评美式文化扁平化，我们专注中文体验
 2. **CLI only, no frontend** — 终端原生，开发者友好
-3. **Local-first + Cloud 混合** — 支持 Ollama / OpenAI / Anthropic / Google 等多LLM接入，不绑定单一提供商
+3. **Multi-LLM** — 支持 Ollama / OpenAI / Anthropic / Google 等多LLM接入，不绑定单一提供商
 4. **用户自选模型** — chat model / vision model / embedding model / TTS 都可配置
 5. **单文件夹工作流** — 所有文件放入一个目录，执行命令返回结果文件
+
+## 项目规范
+
+- **语言**: 英文（命令、提示、文档）
+- **技术栈**: Python（RAG/ML生态成熟，同NotebookLM后端选择）
+- **开源协议**: Apache 2.0（商业友好，含专利保护）
+- **配置路径**: `~/.shoothighlm/config.yaml`
+- **思维导图输出**: 双输出 — TUI交互版（终端键盘导航+AI对话）+ HTML交互版（浏览器mermaid.js渲染，可点击）
 
 ## 技术栈
 
