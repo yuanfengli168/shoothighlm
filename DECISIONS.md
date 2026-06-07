@@ -139,5 +139,5 @@ Drop PDFs in a folder, run commands, get output files.
 - [x] 中文 LLM 对比
 - [x] TTS/API 可行性
 - [x] 思维导图蓝海分析
-- [ ] 架构设计文档
+- [x] 架构设计文档
 - [ ] 实现（待讨论确认）
