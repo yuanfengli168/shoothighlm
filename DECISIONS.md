@@ -67,13 +67,29 @@ Drop PDFs in a folder, run commands, get output files.
 - 键盘导航树形结构 + 回车探索节点 + 分屏 AI 对话
 - **蓝海功能** — 无开源工具在 CLI 做此交互 (详见 blueOcean.md)
 
+### 思维导图导出格式
+
+| 格式 | 说明 | 兼容软件 |
+|------|------|---------|
+| Markdown (默认) | 层级缩进，通用性最强 | 几乎所有工具 |
+| OPML | 思维导图标准交换格式 | XMind, MindManager, FreeMind, MindNode 等 |
+| Mermaid | 代码即图表 | VS Code, GitHub, 文档工具 |
+| HTML (交互) | mermaid.js 渲染，可点击节点 | 浏览器 |
+| XMind (.xmind) | XMind 原生格式 | XMind |
+| FreeMind (.mm) | 老牌开源格式 | FreeMind, XMind(导入) |
+| MindManager (.mmap) | 商业格式 | MindManager |
+
+- 优先支持 OPML — 这是思维导图界的"CSV"，几乎所有软件都能导入
+- Markdown 导出作为通用后备
+- HTML 交互版作为在线预览
+
 ## 功能优先级
 
 | 优先级 | 功能 | 难度 | 方案 |
 |--------|------|------|------|
 | P0 | RAG 聊天 + 引用 | 中 | Ollama + bge-m3 + sqlite-vec |
 | P0 | PDF 源管理 | 中 | docling/marker 解析 → chunk → embed |
-| P1 | 交互式思维导图 | 中 | LLM 提取实体关系 → TUI 树 + 分屏对话 |
+| P1 | 交互式思维导图 | 中 | LLM 提取实体关系 → TUI 树 + 分屏对话，导出 OPML/Markdown/HTML/XMind |
 | P1 | 闪卡/测验 | 低 | 纯 LLM prompt |
 | P2 | 播客生成 | 高 | LLM 脚本 + Fish Audio 双声音 |
 | P2 | 笔记本引导问题 | 低 | LLM 自动生成 |

@@ -28,7 +28,7 @@ Google NotebookLM is powerful, but it's:
 
 - **RAG Chat with Citations** — Ask questions about your PDFs, get answers grounded in your sources with inline citations
 - **PDF Source Management** — Drop PDFs in a folder, auto-parse, chunk, embed, index
-- **Interactive Mind Map** — Keyboard-navigate a tree of key concepts, press Enter to drill into any node and chat with AI about it (TUI + HTML dual output)
+- **Interactive Mind Map** — Keyboard-navigate a tree of key concepts, press Enter to drill into any node and chat with AI about it. Exports to OPML, Markdown, HTML (interactive), XMind, FreeMind formats
 - **Flashcards & Quizzes** — Auto-generate study materials from your documents
 
 ### Planned
@@ -66,8 +66,15 @@ shootHigh chat ./my-books
 # Generate mind map (TUI interactive)
 shootHigh mindmap ./my-books
 
-# Generate mind map (HTML interactive)
+# Generate mind map (HTML interactive, clickable)
 shootHigh mindmap ./my-books --format html
+
+# Export mind map to OPML (importable in XMind, MindManager, etc.)
+shootHigh mindmap ./my-books --export opml
+
+# Export to other formats
+shootHigh mindmap ./my-books --export xmind
+shootHigh mindmap ./my-books --export markdown
 
 # Generate flashcards
 shootHigh flashcard ./my-books
@@ -125,6 +132,7 @@ limits:
 | PDF Parsing | docling + marker | Battle-tested, handles complex layouts |
 | Mind Map (TUI) | Textual tree + split-pane chat | Unique CLI interactive experience |
 | Mind Map (HTML) | mermaid.js | Click-to-explore in browser |
+| Mind Map (Export) | OPML, Markdown, XMind, FreeMind, MindManager | Interoperable with all major mind map apps |
 | Infographic | HTML/CSS + Puppeteer | Free, perfect CJK text rendering |
 | TTS | Fish Audio S2 / CosyVoice | Best Chinese voice quality |
 | Image Gen | FLUX.2 Flex (Replicate) | $0.03-0.05/image, good for decorative art |
