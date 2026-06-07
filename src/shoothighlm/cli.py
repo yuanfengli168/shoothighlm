@@ -99,12 +99,62 @@ def index(notebook: str):
 @main.command()
 @click.argument("notebook", type=click.Path(exists=True))
 @click.argument("question", nargs=-1)
-def chat(notebook: str, question: tuple[str]):
+@click.option("--model", "model", default=None, help="Override chat model")
+def chat(notebook: str, question: tuple[str], model: str):
     """Chat with your PDFs"""
-    rprint(f"[green]Chatting with:[/green] {notebook}")
-    if question:
-        rprint(f"[bold]Q:[/bold] {' '.join(question)}")
-    rprint("[yellow]RAG retrieval + LLM response coming soon...[/yellow]")
+    from .config import Config
+    from .embedding import get_embedder
+    from .vectorstore import VectorStore
+    from .rag import RAGChat
+    
+    config = Config()
+    notebook_path = Path(notebook)
+    
+    # Check for indexed database
+    db_path = notebook_path / ".shoothighlm" / "vectors.db"
+    if not db_path.exists():
+        rprint("[red]No index found. Run 'shoot-high index' first.[/red]")
+        return
+    
+    # Initialize components
+    store = VectorStore(db_path)
+    embedder = get_embedder(model=config.get("models", "embedding", default="bge-m3"))
+    chat_model = model or config.get("models", "chat", default="qwen3.5:cloud")
+    
+    rag = RAGChat(
+        vectorstore=store,
+        embedder=embedder,
+        chat_model=chat_model,
+        top_k=config.get("rag", "top_k", default=5),
+        min_similarity=config.get("rag", "min_similarity", default=0.7),
+    )
+    
+    try:
+        if question:
+            # Single question mode
+            query = " ".join(question)
+            rprint(f"[bold]Q:[/bold] {query}")
+            rprint("[dim]Thinking...[/dim]")
+            response = rag.chat(query)
+            rprint(f"[green]A:[/green] {response.answer}")
+        else:
+            # Interactive mode
+            rprint("[green]Chat mode. Type 'quit' to exit.[/green]")
+            while True:
+                try:
+                    query = click.prompt(click.style("Q", bold=True, fg="green"), prompt_suffix="> ")
+                except EOFError:
+                    break
+                if query.lower() in ["quit", "exit", "q"]:
+                    break
+                if not query.strip():
+                    continue
+                rprint("[dim]Thinking...[/dim]")
+                response = rag.chat(query)
+                rprint(f"[green]A:[/green] {response.answer}")
+    finally:
+        rag.close()
+        store.close()
 
 
 @main.command()
