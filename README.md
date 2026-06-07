@@ -33,7 +33,10 @@ Google NotebookLM is powerful, but it's:
 
 ### Planned
 
-- **Podcast Generation** — Two-voice Chinese podcast from your books (Fish Audio / CosyVoice TTS)
+- **✅ Podcast Script Generation** — Two-host conversational podcast script from your books
+  - Markdown/JSON export
+  - Configurable duration and host names
+  - TTS integration planned (Fish Audio / CosyVoice)
 - **Notebook Guides** — Auto-generated suggested questions and topic overview
 - **Infographics** — HTML/CSS templates rendered to PNG (free, perfect Chinese text) + optional AI hero art
 - **Data Tables** — Extract and structure data from sources
@@ -166,9 +169,17 @@ See [ranking-board.md](ranking-board.md) for the vision.
 
 ## Status
 
-✅ **Phase 2 P1 Complete** — Mind map + Flashcard generation working!
+✅ **Phase 3 P2 In Progress** — Podcast generation complete, infographics next!
 
-**Test Coverage:** 80 tests passing, 90% coverage ✅
+**Test Coverage:** 96 tests passing, 92% coverage ✅
+
+| Phase | Status | Features |
+|-------|--------|----------|
+| Research | ✅ Done | NotebookLM analysis, LLM comparison, API research |
+| Phase 1 (P0) | ✅ Done | PDF parsing, chunking, embedding, RAG chat with citations |
+| Phase 2 (P1) | ✅ Done | Mind map extraction, flashcard generation |
+| Phase 3 (P2) | 🚧 In Progress | ✅ Podcast generation, ⏳ Infographics |
+| Phase 4 (P3+) | ⏳ Planned | LLM ranking board, data tables |
 
 | Phase | Status | Features |
 |-------|--------|----------|

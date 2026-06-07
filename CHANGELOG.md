@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Phase 3 P2 — Podcast Script Generation
+
+#### Added
+- `podcast.py`: Two-voice podcast script generation from PDFs
+  - LLM writes conversational script between two hosts
+  - Configurable duration (affects script length)
+  - Custom host names (default: Alex & Jamie)
+  - Exports: Markdown, JSON
+  - 98% test coverage
+- CLI command: `shoot-high podcast`
+  - `--duration`: Target duration in minutes (default: 5)
+  - `--host-a/--host-b`: Custom host names
+  - `--format`: markdown/json
+  - `--output`: Custom output path
+- CLI integration tests: 6 new tests for podcast command
+- Total tests: 96 passing
+- Test coverage: **92% overall** ✅
+
+#### Changed
+- README updated to reflect Phase 3 progress
+- `cli.py` coverage improved from 81% to 84%
+
 ### Phase 2 P1 — Mind Map + Flashcard Generation
 
 #### Added
