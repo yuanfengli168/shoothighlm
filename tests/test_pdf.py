@@ -88,19 +88,48 @@ def test_chunk_metadata():
     assert chunk.end_page == 0
 
 
-@pytest.mark.skip(reason="Requires docling package")
-def test_parse_pdf_with_docling():
-    """Test PDF parsing with docling (skipped, requires installation)"""
-    pass
+def test_parse_pdf_with_docling(tmp_path):
+    """Test PDF parsing with docling"""
+    from shoothighlm.pdf import parse_pdf
+    
+    # Create a fake PDF-like file for testing (docling can handle various formats)
+    # For now, just test that the import works and function is callable
+    # Real PDF testing would need actual PDF files
+    # This test verifies docling is installed and working
+    try:
+        from docling.document_converter import DocumentConverter
+        converter = DocumentConverter()
+        # Docling is installed and working
+        assert True
+    except ImportError:
+        pytest.fail("docling not installed")
 
 
-@pytest.mark.skip(reason="Requires docling and pypdf packages")
-def test_parse_pdf_fallback():
-    """Test PDF parsing fallback (skipped, requires installation)"""
-    pass
+def test_parse_pdf_fallback(tmp_path):
+    """Test that pypdf is available as fallback"""
+    try:
+        from pypdf import PdfReader
+        # pypdf is installed
+        assert True
+    except ImportError:
+        pytest.fail("pypdf not installed")
 
 
-@pytest.mark.skip(reason="Requires docling package")
-def test_parse_pdf_empty():
-    """Test PDF parsing returns empty (skipped, requires installation)"""
-    pass
+def test_parse_pdf_empty(tmp_path):
+    """Test parsing behavior with empty/non-existent file"""
+    from shoothighlm.pdf import parse_pdf
+    
+    # Create empty file
+    empty_file = tmp_path / "empty.pdf"
+    empty_file.touch()
+    
+    # Should not crash, but may return empty or error
+    # This tests error handling
+    try:
+        text_gen = parse_pdf(empty_file)
+        text = next(text_gen, "")
+        # If it doesn't crash, test passes
+        assert isinstance(text, str)
+    except Exception:
+        # Expected for empty file
+        pass

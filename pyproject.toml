@@ -54,6 +54,7 @@ pdf = [
     "docling>=2.0.0",
     "marker-pdf>=0.2.0",
     "pypdf>=3.0.0",
+    "pypdfium2>=4.0.0",
 ]
 tui = [
     "textual>=0.50.0",

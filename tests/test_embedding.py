@@ -66,12 +66,16 @@ def test_get_embedder_cloud_still_local():
     # Cloud doesn't support embeddings, so it still returns local
 
 
-@pytest.mark.skip(reason="Requires running Ollama instance")
 def test_embedder_embed_real():
-    """Test actual embedding generation"""
+    """Test actual embedding generation with Ollama"""
     embedder = Embedder(model="bge-m3")
     embedding = embedder.embed("Hello world")
     
     assert isinstance(embedding, list)
-    assert len(embedding) > 0
+    assert len(embedding) == 1024, "bge-m3 produces 1024-dimensional embeddings"
     assert all(isinstance(x, float) for x in embedding)
+    
+    # Test that similar texts have similar embeddings
+    emb1 = embedder.embed("Hello world")
+    emb2 = embedder.embed("Hello world")
+    assert emb1 == emb2, "Same text should produce same embedding"
