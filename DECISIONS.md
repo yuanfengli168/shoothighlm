@@ -21,12 +21,19 @@ CLI 工具，复刻 Google NotebookLM 核心功能，Ollama 驱动，中文优�
 
 | 用途 | 默认方案 | 备选 | 本地/云 |
 |------|---------|------|--------|
-| Chat LLM | Qwen3-235B-A22B (Ollama Cloud) | Qwen3-32B (本地) | 云优先，本地兜底 |
-| Embedding | bge-m3 (568M, ~2.2GB) | gte-Qwen2 | 本地 |
+| Chat LLM | glm-5.1:cloud | qwen3.5:cloud, deepseek-v4-flash:cloud | 云优先 |
+| Chat 本地兜底 | qwen3.5:27b | qwen3:32b | 本地 |
+| Vision | qwen3.5:cloud | minimax-m3:cloud (1M上下文) | 云优先 |
+| Vision 本地兜底 | qwen3.5:27b | — | 本地 |
+| Embedding | bge-m3 (568M, ~2.2GB) | qwen3-embedding:8b | 本地 |
 | 向量库 | sqlite-vec | ChromaDB | 本地 |
 
-- **bge-m3**: BAAI/FlagOpen，MIRACL 中文检索第一，支持 dense+sparse+multi-vector，M1 Max 64GB 轻松运行
-- **Qwen3 系列**: C-Eval/CMMLU 中文基准测试每个参数级别第一
+- **glm-5.1**: 清华/Z.ai 原生中文，最强中文推理能力
+- **qwen3.5:cloud**: 阿里通义，多模态，256K上下文，中文OCR最强
+- **deepseek-v4-flash:cloud**: 1M上下文，中等用量（更便宜）
+- **bge-m3**: BAAI/FlagOpen，MIRACL 中文检索第一，支持 dense+sparse+multi-vector
+- **Embedding 无云版本** — Ollama Cloud 不提供 embedding，只能本地跑
+- **Ollama Cloud 用法**: 同一CLI，模型名加 `:cloud` 后缀，如 `ollama run glm-5.1:cloud`
 
 ### 信息图
 
