@@ -174,7 +174,7 @@ See [ranking-board.md](ranking-board.md) for the vision.
 |-------|--------|----------|
 | Research | ✅ Done | NotebookLM analysis, LLM comparison, API research |
 | Phase 1 (P0) | ✅ Done | PDF parsing, chunking, embedding, RAG chat with citations |
-| Phase 2 (P1) | 🚧 Next | Interactive mind map, flashcards |
+| Phase 2 (P1) | ✅ Done | Mind map extraction, flashcard generation |
 | Phase 3 (P2) | ⏳ Planned | Podcast generation, infographics |
 | Phase 4 (P3+) | ⏳ Planned | LLM ranking board, data tables |
 
