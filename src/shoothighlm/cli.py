@@ -159,22 +159,172 @@ def chat(notebook: str, question: tuple[str], model: str):
 
 @main.command()
 @click.argument("notebook", type=click.Path(exists=True))
-@click.option("--format", "fmt", type=click.Choice(["markdown", "opml", "html", "freemind", "xmind"]), default="markdown")
-@click.option("--tui", is_flag=True, help="Open interactive TUI")
-def mindmap(notebook: str, fmt: str, tui: bool):
+@click.option("--format", "fmt", type=click.Choice(["markdown", "opml", "html", "json"]), default="markdown")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
+def mindmap(notebook: str, fmt: str, output: str):
     """Generate mind map from PDFs"""
-    rprint(f"[green]Generating mind map:[/green] {notebook} ({fmt})")
-    if tui:
-        rprint("[yellow]TUI coming soon...[/yellow]")
-    rprint("[yellow]Mind map extraction coming soon...[/yellow]")
+    from .config import Config
+    from .pdf import parse_pdf
+    from .mindmap import MindMapExtractor
+    
+    config = Config()
+    notebook_path = Path(notebook)
+    
+    # Find PDFs
+    pdfs = list(notebook_path.glob("*.pdf"))
+    if not pdfs:
+        rprint("[red]No PDFs found in notebook[/red]")
+        return
+    
+    rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
+    
+    # Initialize extractor
+    extractor = MindMapExtractor(
+        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
+    )
+    
+    try:
+        # Process first PDF (for now)
+        pdf = pdfs[0]
+        rprint(f"[blue]Processing:[/blue] {pdf.name}")
+        
+        text_gen = parse_pdf(pdf)
+        text = next(text_gen, "")
+        
+        if not text:
+            rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
+            return
+        
+        rprint("[dim]Extracting mind map...[/dim]")
+        mindmap_tree = extractor.extract(text, title=pdf.stem)
+        
+        # Export based on format
+        if fmt == "markdown":
+            content = mindmap_tree.to_markdown()
+            ext = ".md"
+        elif fmt == "opml":
+            content = f'<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n<head><title>{pdf.stem}</title></head>\n<body>\n{mindmap_tree.to_opml()}\n</body>\n</opml>'
+            ext = ".opml"
+        elif fmt == "json":
+            content = json.dumps(mindmap_tree.to_dict(), indent=2, ensure_ascii=False)
+            ext = ".json"
+        elif fmt == "html":
+            # Generate Markmap HTML
+            md_content = mindmap_tree.to_markdown()
+            content = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>{pdf.stem} - Mind Map</title>
+  <script src="https://cdn.jsdelivr.net/npm/markmap-autoloader@latest"></script>
+  <style>
+    body {{ margin: 0; padding: 20px; }}
+    .markmap {{ width: 100%; height: 90vh; }}
+  </style>
+</head>
+<body>
+  <h1>{pdf.stem}</h1>
+  <div class="markmap">
+
+{md_content}
+
+  </div>
+</body>
+</html>"""
+            ext = ".html"
+        
+        # Write to file
+        if output:
+            output_path = Path(output)
+        else:
+            output_dir = notebook_path / "output"
+            output_dir.mkdir(exist_ok=True)
+            output_path = output_dir / f"{pdf.stem}-mindmap{ext}"
+        
+        output_path.write_text(content, encoding="utf-8")
+        rprint(f"[green]✓ Mind map saved to:[/green] {output_path}")
+        
+    finally:
+        extractor.close()
 
 
 @main.command()
 @click.argument("notebook", type=click.Path(exists=True))
-def flashcard(notebook: str):
+@click.option("--num", "-n", default=10, help="Number of flashcards to generate")
+@click.option("--format", "fmt", type=click.Choice(["markdown", "csv", "json"]), default="markdown")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
+def flashcard(notebook: str, num: int, fmt: str, output: str):
     """Generate flashcards from PDFs"""
-    rprint(f"[green]Generating flashcards:[/green] {notebook}")
-    rprint("[yellow]Flashcard generation coming soon...[/yellow]")
+    from .config import Config
+    from .pdf import parse_pdf
+    from .flashcard import FlashcardGenerator
+    
+    config = Config()
+    notebook_path = Path(notebook)
+    
+    # Find PDFs
+    pdfs = list(notebook_path.glob("*.pdf"))
+    if not pdfs:
+        rprint("[red]No PDFs found in notebook[/red]")
+        return
+    
+    rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
+    
+    # Initialize generator
+    generator = FlashcardGenerator(
+        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
+    )
+    
+    try:
+        # Process first PDF (for now)
+        pdf = pdfs[0]
+        rprint(f"[blue]Processing:[/blue] {pdf.name}")
+        
+        text_gen = parse_pdf(pdf)
+        text = next(text_gen, "")
+        
+        if not text:
+            rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
+            return
+        
+        rprint(f"[dim]Generating {num} flashcards...[/dim]")
+        cards = generator.generate(text, num_cards=num, source=pdf.name)
+        
+        if not cards:
+            rprint("[yellow]⚠ No flashcards generated[/yellow]")
+            return
+        
+        rprint(f"[green]✓ Generated {len(cards)} flashcards[/green]")
+        
+        # Export based on format
+        if fmt == "markdown":
+            content = "# Flashcards\n\n"
+            for card in cards:
+                content += card.to_markdown() + "\n\n"
+            ext = ".md"
+        elif fmt == "csv":
+            lines = ["question,answer,tags"]
+            for card in cards:
+                lines.append(card.to_anki_csv())
+            content = "\n".join(lines)
+            ext = ".csv"
+        elif fmt == "json":
+            content = json.dumps([card.to_dict() for card in cards], indent=2, ensure_ascii=False)
+            ext = ".json"
+        
+        # Write to file
+        if output:
+            output_path = Path(output)
+        else:
+            output_dir = notebook_path / "output"
+            output_dir.mkdir(exist_ok=True)
+            output_path = output_dir / f"{pdf.stem}-flashcards{ext}"
+        
+        output_path.write_text(content, encoding="utf-8")
+        rprint(f"[green]✓ Flashcards saved to:[/green] {output_path}")
+        
+    finally:
+        generator.close()
 
 
 @main.command()

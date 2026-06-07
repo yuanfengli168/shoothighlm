@@ -107,22 +107,22 @@ def test_chat_with_question(runner, temp_notebook):
         assert "Test answer" in result.output
 
 
-def test_mindmap_stub(runner, temp_notebook):
-    """Test mindmap command (stub)"""
+def test_mindmap_no_pdfs(runner, temp_notebook):
+    """Test mindmap command with no PDFs"""
     runner.invoke(main, ["init", str(temp_notebook)])
     
     result = runner.invoke(main, ["mindmap", str(temp_notebook)])
     assert result.exit_code == 0
-    assert "coming soon" in result.output.lower()
+    assert "No PDFs found" in result.output
 
 
-def test_flashcard_stub(runner, temp_notebook):
-    """Test flashcard command (stub)"""
+def test_flashcard_no_pdfs(runner, temp_notebook):
+    """Test flashcard command with no PDFs"""
     runner.invoke(main, ["init", str(temp_notebook)])
     
     result = runner.invoke(main, ["flashcard", str(temp_notebook)])
     assert result.exit_code == 0
-    assert "coming soon" in result.output.lower()
+    assert "No PDFs found" in result.output
 
 
 def test_podcast_stub(runner, temp_notebook):
