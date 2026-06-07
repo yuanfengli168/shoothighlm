@@ -1,6 +1,6 @@
 # 书海LM (shootHighLM) — Project Decisions
 
-> 中文优先的本地+云混合 NotebookLM CLI 替代品
+> 中文优先的多LLM NotebookLM CLI 替代品，不绑定单一提供商
 
 ## Vision
 
@@ -11,8 +11,8 @@ CLI 工具，复刻 Google NotebookLM 核心功能，Ollama 驱动，中文优�
 
 1. **中文优先** — NotebookLM 被批评美式文化扁平化，我们专注中文体验
 2. **CLI only, no frontend** — 终端原生，开发者友好
-3. **Local-first + Cloud 混合** — Ollama 本地 + 按需云端 API
-4. **用户自选模型** — chat model / embedding model / TTS 都可配置
+3. **Local-first + Cloud 混合** — 支持 Ollama / OpenAI / Anthropic / Google 等多LLM接入，不绑定单一提供商
+4. **用户自选模型** — chat model / vision model / embedding model / TTS 都可配置
 5. **单文件夹工作流** — 所有文件放入一个目录，执行命令返回结果文件
 
 ## 技术栈
