@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Tuple
 from dataclasses import dataclass
 import json
+import sqlite_vec
 
 
 @dataclass
@@ -22,6 +23,8 @@ class VectorStore:
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.conn = sqlite3.connect(str(db_path))
+        # Load sqlite-vec extension
+        sqlite_vec.load(self.conn)
         self._init_db()
     
     def _init_db(self) -> None:
