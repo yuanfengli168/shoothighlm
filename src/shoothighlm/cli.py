@@ -399,5 +399,81 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, ho
         generator.close()
 
 
+@main.command()
+@click.argument("notebook", type=click.Path(exists=True))
+@click.option("--format", "fmt", type=click.Choice(["markdown", "json"]), default="markdown")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
+@click.option("--questions", "-q", default=5, help="Number of suggested questions")
+def guide(notebook: str, fmt: str, output: str, questions: int):
+    """Generate notebook guide (summary, key topics, suggested questions)"""
+    from .config import Config
+    from .pdf import parse_pdf
+    from .guide import GuideGenerator
+    
+    config = Config()
+    notebook_path = Path(notebook)
+    
+    # Find PDFs
+    pdfs = list(notebook_path.glob("*.pdf"))
+    if not pdfs:
+        rprint("[red]No PDFs found in notebook[/red]")
+        return
+    
+    rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
+    
+    # Initialize generator
+    generator = GuideGenerator(
+        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
+    )
+    
+    try:
+        # Combine text from all PDFs (guides work on the whole notebook)
+        all_text = ""
+        sources = []
+        for pdf in pdfs:
+            rprint(f"[blue]Processing:[/blue] {pdf.name}")
+            text_gen = parse_pdf(pdf)
+            text = next(text_gen, "")
+            if text:
+                all_text += f"\n\n=== {pdf.name} ===\n\n" + text
+                sources.append(pdf.name)
+            else:
+                rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
+        
+        if not all_text.strip():
+            rprint("[red]No text extracted from any PDFs[/red]")
+            return
+        
+        rprint(f"[dim]Generating guide with {questions} suggested questions...[/dim]")
+        notebook_guide = generator.generate(
+            all_text,
+            title=notebook_path.name,
+            sources=sources,
+            num_questions=questions,
+        )
+        
+        # Export based on format
+        if fmt == "markdown":
+            content = notebook_guide.to_markdown()
+            ext = ".md"
+        elif fmt == "json":
+            content = notebook_guide.to_json()
+            ext = ".json"
+        
+        # Write to file
+        if output:
+            output_path = Path(output)
+        else:
+            output_dir = notebook_path / "output"
+            output_dir.mkdir(exist_ok=True)
+            output_path = output_dir / f"{notebook_path.name}-guide{ext}"
+        
+        output_path.write_text(content, encoding="utf-8")
+        rprint(f"[green]✓ Guide saved to:[/green] {output_path}")
+        
+    finally:
+        generator.close()
+
+
 if __name__ == "__main__":
     main()

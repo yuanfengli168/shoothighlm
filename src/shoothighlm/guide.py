@@ -1,0 +1,180 @@
+"""Notebook Guide generation — auto-summary, topics, and suggested questions"""
+
+from pathlib import Path
+from typing import List, Dict, Any
+from dataclasses import dataclass, field
+import json
+import httpx
+
+
+@dataclass
+class NotebookGuide:
+    """Auto-generated guide for a notebook (collection of documents)"""
+    title: str
+    summary: str
+    key_topics: List[str] = field(default_factory=list)
+    suggested_questions: List[str] = field(default_factory=list)
+    sources: List[str] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            "title": self.title,
+            "summary": self.summary,
+            "key_topics": self.key_topics,
+            "suggested_questions": self.suggested_questions,
+            "sources": self.sources,
+        }
+    
+    def to_markdown(self) -> str:
+        """Convert to Markdown format"""
+        lines = [
+            f"# 📓 {self.title}",
+            "",
+            "## 概述 (Summary)",
+            "",
+            self.summary,
+            "",
+        ]
+        
+        if self.key_topics:
+            lines.extend([
+                "## 🎯 关键主题 (Key Topics)",
+                "",
+            ])
+            for topic in self.key_topics:
+                lines.append(f"- {topic}")
+            lines.append("")
+        
+        if self.suggested_questions:
+            lines.extend([
+                "## 💡 建议问题 (Suggested Questions)",
+                "",
+            ])
+            for i, q in enumerate(self.suggested_questions, 1):
+                lines.append(f"{i}. {q}")
+            lines.append("")
+        
+        if self.sources:
+            lines.extend([
+                "---",
+                "",
+                f"*Sources: {len(self.sources)} document(s) — {', '.join(self.sources)}*",
+            ])
+        
+        return "\n".join(lines)
+    
+    def to_json(self) -> str:
+        """Convert to JSON string"""
+        return json.dumps(self.to_dict(), indent=2, ensure_ascii=False)
+
+
+class GuideGenerator:
+    """Generate notebook guides from document text using LLM"""
+    
+    def __init__(
+        self,
+        chat_model: str = "qwen3.5:cloud",
+        base_url: str = "http://127.0.0.1:11434",
+    ):
+        self.chat_model = chat_model
+        self.base_url = base_url
+        self.client = httpx.Client(timeout=120.0)
+    
+    def generate(
+        self,
+        text: str,
+        title: str = "Notebook Guide",
+        sources: List[str] = None,
+        num_questions: int = 5,
+    ) -> NotebookGuide:
+        """
+        Generate a notebook guide from text.
+        
+        Args:
+            text: Combined text from all documents in the notebook
+            title: Title for the guide (usually notebook name)
+            sources: List of source document names
+            num_questions: Number of suggested questions to generate
+        
+        Returns:
+            NotebookGuide object
+        """
+        sources = sources or []
+        
+        # Truncate if too long — guides work best with condensed text
+        max_chars = 30000
+        if len(text) > max_chars:
+            text = text[:max_chars] + "... [truncated]"
+        
+        prompt = f"""You are a research assistant. Analyze the following documents and generate a notebook guide.
+
+## Instructions:
+- Write a 2-3 paragraph summary capturing the main themes and insights
+- List 5-8 key topics (concepts, themes, or important entities)
+- Suggest {num_questions} thoughtful questions a reader might want to explore
+- Questions should be specific enough to guide exploration, not generic
+- Output ONLY valid JSON, no other text
+
+## Output Format:
+```json
+{{
+  "summary": "2-3 paragraph summary...",
+  "key_topics": ["Topic 1", "Topic 2", "Topic 3"],
+  "suggested_questions": [
+    "Specific question 1?",
+    "Specific question 2?",
+    "Specific question 3?"
+  ]
+}}
+```
+
+## Documents to Analyze:
+{text}
+
+## Notebook Guide JSON:
+"""
+        
+        response = self.client.post(
+            f"{self.base_url}/api/generate",
+            json={
+                "model": self.chat_model,
+                "prompt": prompt,
+                "stream": False,
+            },
+        )
+        response.raise_for_status()
+        
+        # Parse JSON from response
+        output = response.json()["response"]
+        
+        # Extract JSON from markdown code blocks
+        if "```json" in output:
+            json_str = output.split("```json")[1].split("```")[0].strip()
+        elif "```" in output:
+            json_str = output.split("```")[1].split("```")[0].strip()
+        else:
+            json_str = output.strip()
+        
+        try:
+            data = json.loads(json_str)
+            return NotebookGuide(
+                title=title,
+                summary=data.get("summary", ""),
+                key_topics=data.get("key_topics", []),
+                suggested_questions=data.get("suggested_questions", []),
+                sources=sources,
+            )
+        except json.JSONDecodeError:
+            # Fallback: return minimal guide
+            return NotebookGuide(
+                title=title,
+                summary="Failed to generate guide from documents.",
+                key_topics=[],
+                suggested_questions=[],
+                sources=sources,
+            )
+    
+    def close(self):
+        """Close HTTP client"""
+        self.client.close()

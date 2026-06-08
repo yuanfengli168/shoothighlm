@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Phase 3 P2 — Notebook Guide Generation
+
+#### Added
+- `guide.py`: Notebook guide generation from PDF collections
+  - Auto-generates summary, key topics, and suggested questions
+  - Configurable number of questions (default: 5)
+  - Combines text from all PDFs in notebook
+  - Exports: Markdown, JSON
+  - 98% test coverage
+- CLI command: `shoot-high guide`
+  - `--format`: markdown/json
+  - `--questions` / `-q`: Number of suggested questions
+  - `--output` / `-o`: Custom output path
+- CLI integration tests: 7 new tests for guide command
+- Total tests: 113 passing
+- Test coverage: **93% overall** ✅
+
+#### Changed
+- CLI coverage improved from 84% to 87%
+
 ### Phase 3 P2 — Podcast Script Generation
 
 #### Added

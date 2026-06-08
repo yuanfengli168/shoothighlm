@@ -37,7 +37,7 @@ Google NotebookLM is powerful, but it's:
   - Markdown/JSON export
   - Configurable duration and host names
   - TTS integration planned (Fish Audio / CosyVoice)
-- **Notebook Guides** — Auto-generated suggested questions and topic overview
+- **Notebook Guides** — Auto-generated summary, key topics, and suggested questions to start exploring your documents
 - **Infographics** — HTML/CSS templates rendered to PNG (free, perfect Chinese text) + optional AI hero art
 - **Data Tables** — Extract and structure data from sources
 - **LLM Ranking Board** — Benchmark and compare LLMs on book-reading ability (see [ranking-board.md](ranking-board.md))
@@ -82,6 +82,15 @@ shootHigh flashcard ./my-books
 
 # Generate podcast script + audio
 shootHigh podcast ./my-books
+
+# Generate notebook guide (summary, key topics, suggested questions)
+shootHigh guide ./my-books
+
+# Custom number of questions
+shootHigh guide ./my-books --questions 8
+
+# Export guide as JSON
+shootHigh guide ./my-books --format json
 ```
 
 ## Configuration
@@ -169,24 +178,16 @@ See [ranking-board.md](ranking-board.md) for the vision.
 
 ## Status
 
-✅ **Phase 3 P2 In Progress** — Podcast generation complete, infographics next!
+✅ **Phase 3 P2 In Progress** — Podcast + Notebook Guides complete, infographics next!
 
-**Test Coverage:** 96 tests passing, 92% coverage ✅
-
-| Phase | Status | Features |
-|-------|--------|----------|
-| Research | ✅ Done | NotebookLM analysis, LLM comparison, API research |
-| Phase 1 (P0) | ✅ Done | PDF parsing, chunking, embedding, RAG chat with citations |
-| Phase 2 (P1) | ✅ Done | Mind map extraction, flashcard generation |
-| Phase 3 (P2) | 🚧 In Progress | ✅ Podcast generation, ⏳ Infographics |
-| Phase 4 (P3+) | ⏳ Planned | LLM ranking board, data tables |
+**Test Coverage:** 113 tests passing, 93% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|
 | Research | ✅ Done | NotebookLM analysis, LLM comparison, API research |
 | Phase 1 (P0) | ✅ Done | PDF parsing, chunking, embedding, RAG chat with citations |
 | Phase 2 (P1) | ✅ Done | Mind map extraction, flashcard generation |
-| Phase 3 (P2) | ⏳ Planned | Podcast generation, infographics |
+| Phase 3 (P2) | 🚧 In Progress | ✅ Podcast generation, ✅ Notebook guides, ⏳ Infographics |
 | Phase 4 (P3+) | ⏳ Planned | LLM ranking board, data tables |
 
 ## License
