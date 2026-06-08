@@ -19,13 +19,25 @@ class Config:
         self.load()
     
     def load(self) -> None:
-        """Load configuration from file"""
-        if not self.config_path.exists():
-            self._config = self._get_defaults()
-            return
+        """Load configuration from file, merging with defaults for missing keys"""
+        # Always start with defaults
+        self._config = self._get_defaults()
         
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            self._config = yaml.safe_load(f) or {}
+        if self.config_path.exists():
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                user_config = yaml.safe_load(f) or {}
+            # Deep merge: user values override defaults, missing keys get defaults
+            self._config = self._deep_merge(self._config, user_config)
+    
+    def _deep_merge(self, base: dict, override: dict) -> dict:
+        """Deep merge two dicts, override takes precedence"""
+        result = base.copy()
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
     
     def _get_defaults(self) -> dict[str, Any]:
         """Get default configuration"""
