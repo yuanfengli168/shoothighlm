@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Phase 3 P3 — Infographic Generation
+
+#### Added
+- `infographic.py`: HTML/CSS template-based infographic generator
+  - 3 built-in templates: `summary_card`, `topic_hierarchy`, `stats_card`
+  - LLM extracts structured data, Jinja2 renders HTML
+  - Built-in CJK font fallbacks (PingFang SC, Microsoft YaHei, Noto Sans CJK SC)
+  - Optional PNG render via Playwright (auto-falls back to system Chrome)
+  - 94% test coverage
+- CLI command: `shoot-high infographic`
+  - `--template` / `-t`: summary_card / topic_hierarchy / stats_card
+  - `--output` / `-o`: Custom HTML output path
+  - `--png`: Also render to PNG (requires playwright)
+  - `--width` / `--height`: PNG viewport dimensions
+- 20 unit tests + 10 CLI integration tests
+- Total tests: 188 passing
+- Test coverage: **93% overall** ✅
+
+#### Changed
+- CLI coverage improved from 88% to 89%
+
 ### Phase 3 P2 — TTS Audio Synthesis (Podcast)
 
 #### Added

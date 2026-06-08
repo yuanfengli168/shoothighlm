@@ -546,5 +546,96 @@ def guide(notebook: str, fmt: str, output: str, questions: int):
         generator.close()
 
 
+@main.command()
+@click.argument("notebook", type=click.Path(exists=True))
+@click.option("--template", "-t",
+              type=click.Choice(["summary_card", "topic_hierarchy", "stats_card"]),
+              default="summary_card",
+              help="Infographic template")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output HTML path")
+@click.option("--png", "to_png", is_flag=True, help="Also render to PNG (requires playwright)")
+@click.option("--width", default=1200, help="PNG viewport width")
+@click.option("--height", default=1600, help="PNG viewport height")
+def infographic(notebook: str, template: str, output: str, to_png: bool, width: int, height: int):
+    """Generate an infographic from PDFs (HTML + optional PNG)"""
+    from .config import Config
+    from .pdf import parse_pdf
+    from .infographic import InfographicGenerator, render_html_to_png
+    
+    config = Config()
+    notebook_path = Path(notebook)
+    
+    # Find PDFs
+    pdfs = list(notebook_path.glob("*.pdf"))
+    if not pdfs:
+        rprint("[red]No PDFs found in notebook[/red]")
+        return
+    
+    rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
+    
+    generator = InfographicGenerator(
+        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
+    )
+    
+    try:
+        # Combine text from all PDFs
+        all_text = ""
+        sources = []
+        for pdf in pdfs:
+            rprint(f"[blue]Processing:[/blue] {pdf.name}")
+            text_gen = parse_pdf(pdf)
+            text = next(text_gen, "")
+            if text:
+                all_text += f"\n\n=== {pdf.name} ===\n\n" + text
+                sources.append(pdf.name)
+            else:
+                rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
+        
+        if not all_text.strip():
+            rprint("[red]No text extracted from any PDFs[/red]")
+            return
+        
+        rprint(f"[dim]Generating {template} infographic...[/dim]")
+        info = generator.generate(
+            all_text,
+            template=template,
+            title=notebook_path.name,
+            sources=sources,
+        )
+        
+        # Determine output paths
+        if output:
+            html_path = Path(output)
+        else:
+            output_dir = notebook_path / "output"
+            output_dir.mkdir(exist_ok=True)
+            html_path = output_dir / f"{notebook_path.name}-{template}.html"
+        
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+        html_path.write_text(info.html_content, encoding="utf-8")
+        info.output_path = html_path
+        
+        rprint(f"[green]✓ HTML saved:[/green] {html_path}")
+        
+        # Optionally render to PNG
+        if to_png:
+            png_path = html_path.with_suffix(".png")
+            try:
+                rprint(f"[dim]Rendering to PNG (viewport: {width}x{height})...[/dim]")
+                render_html_to_png(html_path, png_path, width=width, height=height)
+                info.png_path = png_path
+                rprint(f"[green]✓ PNG saved:[/green] {png_path}")
+            except ImportError as e:
+                rprint(f"[red]✗ PNG render failed:[/red] {e}")
+                rprint("[yellow]Tip:[/yellow] pip install playwright && playwright install chromium")
+            except Exception as e:
+                rprint(f"[red]✗ PNG render failed:[/red] {e}")
+        
+    except (ValueError, RuntimeError) as e:
+        rprint(f"[red]✗ Generation failed:[/red] {e}")
+    finally:
+        generator.close()
+
+
 if __name__ == "__main__":
     main()

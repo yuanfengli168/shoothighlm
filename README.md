@@ -34,10 +34,12 @@ Google NotebookLM is powerful, but it's:
 - **Podcast Generation** — Two-host conversational scripts + Fish Audio TTS → WAV audio
   - `shoot-high podcast` for the script
   - `shoot-high synthesize <script.json>` for the audio
+- **Infographics** — HTML/CSS templates rendered to PNG with CJK-perfect text
+  - `shoot-high infographic <notebook>` (templates: `summary_card`, `topic_hierarchy`, `stats_card`)
+  - Add `--png` to also produce a PNG image (uses Playwright/Chrome)
 
 ### Planned
 
-- **Infographics** — HTML/CSS templates rendered to PNG (free, perfect Chinese text) + optional AI hero art
 - **Data Tables** — Extract and structure data from sources
 - **LLM Ranking Board** — Benchmark and compare LLMs on book-reading ability (see [ranking-board.md](ranking-board.md))
 - **TUI Interactive Mind Map** — Click a node, chat with AI about it (blue ocean, see [blueOcean.md](blueOcean.md))
@@ -94,6 +96,16 @@ shootHigh podcast ./my-books
 
 # Synthesize audio from the script (requires FISH_AUDIO_API_KEY)
 shootHigh synthesize ./my-books/output/book1-podcast.json
+
+# Generate an infographic (HTML by default)
+shootHigh infographic ./my-books
+
+# Choose a different template
+shootHigh infographic ./my-books --template topic_hierarchy
+shootHigh infographic ./my-books --template stats_card
+
+# Also render to PNG (requires playwright or system Chrome)
+shootHigh infographic ./my-books --png
 ```
 
 ## Configuration
@@ -146,7 +158,7 @@ limits:
 | Mind Map (TUI) | Textual tree + split-pane chat | Unique CLI interactive experience |
 | Mind Map (HTML) | mermaid.js | Click-to-explore in browser |
 | Mind Map (Export) | OPML, Markdown, XMind, FreeMind, MindManager | Interoperable with all major mind map apps |
-| Infographic | HTML/CSS + Puppeteer | Free, perfect CJK text rendering |
+| Infographic | HTML/CSS + Playwright (or system Chrome) | Free, perfect CJK text rendering |
 | TTS | Fish Audio S2 (default), CosyVoice (planned) | Best Chinese voice quality; pure-stdlib WAV join |
 | Image Gen | FLUX.2 Flex (Replicate) | $0.03-0.05/image, good for decorative art |
 | License | Apache 2.0 | Commercial-friendly, patent protection |
@@ -181,17 +193,17 @@ See [ranking-board.md](ranking-board.md) for the vision.
 
 ## Status
 
-✅ **Phase 3 P2 In Progress** — Podcast + TTS + Notebook Guides complete, infographics next!
+✅ **Phase 3 (P2+P3) Complete** — Podcast, TTS, Notebook Guides, and Infographics all shipped!
 
-**Test Coverage:** 158 tests passing, 93% coverage ✅
+**Test Coverage:** 188 tests passing, 93% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|
 | Research | ✅ Done | NotebookLM analysis, LLM comparison, API research |
 | Phase 1 (P0) | ✅ Done | PDF parsing, chunking, embedding, RAG chat with citations |
 | Phase 2 (P1) | ✅ Done | Mind map extraction, flashcard generation |
-| Phase 3 (P2) | 🚧 In Progress | ✅ Podcast, ✅ TTS audio, ✅ Notebook guides, ⏳ Infographics |
-| Phase 4 (P3+) | ⏳ Planned | LLM ranking board, data tables |
+| Phase 3 (P2) | ✅ Done | Podcast scripts, TTS audio, Notebook guides, Infographics |
+| Phase 4 (P3+) | ⏳ Planned | Interactive TUI mind map, LLM ranking board, data tables |
 
 ## License
 
