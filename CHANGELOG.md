@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Coverage improvements
+
+#### Added
+- **Coverage gate** (`pyproject.toml`): `--cov-fail-under=93` so CI blocks regressions
+- **GitHub Actions workflow** (`.github/workflows/tests.yml`): runs full test suite with coverage on push/PR; installs poppler + Playwright; uploads to Codecov
+- **9 targeted tests** in `tests/test_coverage_boost.py`:
+  - `synthesize` runtime-error and unknown-service paths
+  - `infographic` runtime-error, value-error, and generic PNG-render-failure paths
+  - `chat` EOF path
+  - `_render_html` defense-in-depth for unknown templates
+  - Bare-code-block fallback in `_extract_data`
+  - "No Chrome anywhere" error path in `render_html_to_png`
+
+#### Changed
+- **Test coverage**: 93% → **94%** (1046 stmts, 62 miss)
+- **Test count**: 188 → **197 passing**
+
 ### Phase 3 P3 — Infographic Generation
 
 #### Added

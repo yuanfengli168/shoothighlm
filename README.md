@@ -195,7 +195,7 @@ See [ranking-board.md](ranking-board.md) for the vision.
 
 ✅ **Phase 3 (P2+P3) Complete** — Podcast, TTS, Notebook Guides, and Infographics all shipped!
 
-**Test Coverage:** 188 tests passing, 93% coverage ✅
+**Test Coverage:** 197 tests passing, 94% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|

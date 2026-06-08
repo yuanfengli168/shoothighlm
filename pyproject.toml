@@ -104,4 +104,4 @@ disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --cov=shoothighlm"
+addopts = "-v --cov=shoothighlm --cov-fail-under=93"
