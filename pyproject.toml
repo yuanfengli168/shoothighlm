@@ -61,7 +61,8 @@ tui = [
     "textual>=0.50.0",
 ]
 mindmap = [
-    "markmap-cli>=0.15.0",
+    # Markmap HTML export uses client-side JS — no Python dep needed
+    # The generated .html file embeds the Markmap JS bundle
 ]
 tts = [
     "fish-audio-sdk>=0.1.0",
