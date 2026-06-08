@@ -46,13 +46,16 @@ Drop PDFs in a folder, run commands, get output files.
 
 ### 信息图
 
-| 用途 | 方案 | 成本 |
-|------|------|------|
-| 默认信息图 | HTML/CSS 模板 + Puppeteer → PNG | 免费 |
-| 装饰/封面图 | FLUX.2 Flex via Replicate | ~$0.03-0.05/张 |
-| 中文图片 | Seedream (字节) via Replicate | 按量 |
+| 用途 | 方案 | 成本 | 状态 |
+|------|------|------|------|
+| 默认信息图 | HTML/CSS 模板 + Playwright → PNG | 免费 | ✅ 已实现（`shoot-high infographic`） |
+| 装饰/封面图 | FLUX.2 Flex via Replicate | ~$0.03-0.05/张 | ⏳ 待做（需 Replicate API key） |
+| 中文图片 | Seedream (字节) via Replicate | 按量 | ⏳ 待做 |
 
 - AI 生图中文文字渲染仍弱，结构化信息图用 HTML/CSS 更好
+- **3 个内置模板**：`summary_card`（标题+摘要+主题）、`topic_hierarchy`（主题树）、`stats_card`（数据卡片）
+- **CJK 字体兜底**：PingFang SC, Microsoft YaHei, Noto Sans CJK SC — 跨平台中文渲染稳定
+- **PNG 渲染**：Playwright 优先；如未安装 `chromium`，自动 fallback 到 `/usr/bin/google-chrome` / `chromium` / `chromium-browser`
 
 ### TTS / 播客
 
@@ -109,7 +112,7 @@ Drop PDFs in a folder, run commands, get output files.
 | P2 | 笔记本引导问题 | 低 | ✅ Phase 3 完成（`shoot-high guide`） |
 | P2 | 播客生成（脚本） | 中 | ✅ Phase 3 完成 |
 | P2 | 播客生成（TTS 音频） | 高 | ✅ Phase 3 完成（`shoot-high synthesize`） |
-| P3 | 信息图 (HTML) | 中 | ⏳ 待做 |
+| P3 | 信息图 (HTML + PNG) | 中 | ✅ Phase 3 完成（`shoot-high infographic`） |
 | P3 | 数据表格 | 中 | ⏳ 待做 |
 | P4 | 视频概述 | 很高 | ❌ 跳过 |
 | P4 | 幻灯片 | 高 | ❌ 跳过 |
@@ -161,12 +164,14 @@ Drop PDFs in a folder, run commands, get output files.
 - [x] Phase 1 — RAG 聊天 + PDF 源管理
 - [x] Phase 2 — 思维导图提取 + 闪卡
 - [x] Phase 3 — 播客脚本 + TTS 音频合成 + 笔记本引导
+- [x] Phase 3 P3 — 信息图生成（3 模板 + HTML/PNG 输出）
+- [x] CI 覆盖门 + GitHub Actions workflow（197 测试，94% 覆盖）
 
 ### 待完成 ⏳
-- [ ] 信息图生成（HTML/CSS 模板 + Puppeteer → PNG）
 - [ ] 数据表格提取
 - [ ] 思维导图 TUI 交互（蓝海功能）
 - [ ] LLM 排名榜
+- [ ] Codecov 集成（已上传但 token 未配）
 
 ### 测试验证清单（待完成）
 - [ ] qwen3.5:cloud 中文长文档问答质量测试

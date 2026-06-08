@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs cleanup (2026-06-08)
+
+#### Changed
+- `README.md`: standardized all 18 CLI command examples from `shootHigh` → `shoot-high` to match the actual `pyproject.toml` entry point
+- `README.md`: corrected mind-map-HTML library from `mermaid.js` → `Markmap.js`
+- `README.md`: marked Image Gen (Replicate FLUX.2 Flex) as planned, not implemented
+- `DECISIONS.md`: marked 信息图 (Infographics) as ✅ in P3 row
+- `DECISIONS.md`: added 3-template details + CJK font fallbacks to 信息图 section
+- `DECISIONS.md`: added Phase 3 P3 + CI work to 已完成 list
+- `DECISIONS.md`: removed 信息图 from 待完成 list (now done)
+
+### CI: green ✅
+
+- `4c4b719` — `Skip live OLLAMA test in CI (test_embedder_embed_real)`
+- `758217e` — `Fix CI: remove phantom markmap-cli dep, bump actions to v5/v6`
+
 ### Coverage improvements
 
 #### Added

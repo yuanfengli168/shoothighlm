@@ -57,55 +57,55 @@ Google NotebookLM is powerful, but it's:
 pip install shoothighlm
 
 # Initialize a notebook
-shootHigh init ./my-books
+shoot-high init ./my-books
 
 # Add PDFs
 cp ~/Downloads/*.pdf ./my-books/
 
 # Index sources
-shootHigh index ./my-books
+shoot-high index ./my-books
 
 # Chat with your books
-shootHigh chat ./my-books
+shoot-high chat ./my-books
 
 # Generate mind map (primary: Markdown)
-shootHigh mindmap ./my-books
+shoot-high mindmap ./my-books
 
 # Generate mind map (interactive HTML preview)
-shootHigh mindmap ./my-books --format html
+shoot-high mindmap ./my-books --format html
 
 # Export to specific format
-shootHigh mindmap ./my-books --export opml
-shootHigh mindmap ./my-books --export freemind
-shootHigh mindmap ./my-books --export xmind
+shoot-high mindmap ./my-books --export opml
+shoot-high mindmap ./my-books --export freemind
+shoot-high mindmap ./my-books --export xmind
 
 # Generate flashcards
-shootHigh flashcard ./my-books
+shoot-high flashcard ./my-books
 
 # Generate notebook guide (summary, key topics, suggested questions)
-shootHigh guide ./my-books
+shoot-high guide ./my-books
 
 # Custom number of questions
-shootHigh guide ./my-books --questions 8
+shoot-high guide ./my-books --questions 8
 
 # Export guide as JSON
-shootHigh guide ./my-books --format json
+shoot-high guide ./my-books --format json
 
 # Generate podcast script
-shootHigh podcast ./my-books
+shoot-high podcast ./my-books
 
 # Synthesize audio from the script (requires FISH_AUDIO_API_KEY)
-shootHigh synthesize ./my-books/output/book1-podcast.json
+shoot-high synthesize ./my-books/output/book1-podcast.json
 
 # Generate an infographic (HTML by default)
-shootHigh infographic ./my-books
+shoot-high infographic ./my-books
 
 # Choose a different template
-shootHigh infographic ./my-books --template topic_hierarchy
-shootHigh infographic ./my-books --template stats_card
+shoot-high infographic ./my-books --template topic_hierarchy
+shoot-high infographic ./my-books --template stats_card
 
 # Also render to PNG (requires playwright or system Chrome)
-shootHigh infographic ./my-books --png
+shoot-high infographic ./my-books --png
 ```
 
 ## Configuration
@@ -156,11 +156,11 @@ limits:
 | Vector DB | sqlite-vec | Lightweight, no server needed |
 | PDF Parsing | docling + marker | Battle-tested, handles complex layouts |
 | Mind Map (TUI) | Textual tree + split-pane chat | Unique CLI interactive experience |
-| Mind Map (HTML) | mermaid.js | Click-to-explore in browser |
+| Mind Map (HTML) | Markmap.js | Click-to-explore in browser |
 | Mind Map (Export) | OPML, Markdown, XMind, FreeMind, MindManager | Interoperable with all major mind map apps |
 | Infographic | HTML/CSS + Playwright (or system Chrome) | Free, perfect CJK text rendering |
 | TTS | Fish Audio S2 (default), CosyVoice (planned) | Best Chinese voice quality; pure-stdlib WAV join |
-| Image Gen | FLUX.2 Flex (Replicate) | $0.03-0.05/image, good for decorative art |
+| Image Gen | _Planned_ — FLUX.2 Flex (Replicate) | $0.03-0.05/image, good for decorative art (not yet implemented) |
 | License | Apache 2.0 | Commercial-friendly, patent protection |
 
 ## Hard Limits
