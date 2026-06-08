@@ -33,6 +33,8 @@ jobs:
           playwright install --with-deps chromium
       
       - name: Run tests with coverage
+        env:
+          SKIP_LIVE_TESTS: "1"
         run: |
           pytest --no-header -q --tb=short --cov-report=term-missing --cov-report=xml
       

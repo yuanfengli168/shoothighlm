@@ -1,8 +1,27 @@
 """Tests for embedding"""
 
+import os
+import socket
 import pytest
 from unittest.mock import Mock, patch
 from shoothighlm.embedding import Embedder, get_embedder
+
+
+def _ollama_reachable() -> bool:
+    """Check if a local OLLAMA server is reachable on 127.0.0.1:11434."""
+    try:
+        with socket.create_connection(("127.0.0.1", 11434), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+# Auto-skip live OLLAMA tests if the server isn't running locally
+# or if SKIP_LIVE_TESTS=1 is set (e.g. in CI)
+requires_ollama = pytest.mark.skipif(
+    not _ollama_reachable() or os.environ.get("SKIP_LIVE_TESTS") == "1",
+    reason="Local OLLAMA server not reachable (or SKIP_LIVE_TESTS=1)",
+)
 
 
 def test_embedder_init():
@@ -79,3 +98,6 @@ def test_embedder_embed_real():
     emb1 = embedder.embed("Hello world")
     emb2 = embedder.embed("Hello world")
     assert emb1 == emb2, "Same text should produce same embedding"
+
+
+test_embedder_embed_real = requires_ollama(test_embedder_embed_real)
