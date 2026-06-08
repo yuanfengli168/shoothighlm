@@ -28,19 +28,19 @@ Google NotebookLM is powerful, but it's:
 
 - **RAG Chat with Citations** — Ask questions about your PDFs, get answers grounded in your sources with inline citations
 - **PDF Source Management** — Drop PDFs in a folder, auto-parse, chunk, embed, index
-- **Interactive Mind Map** — Keyboard-navigate a tree of key concepts, press Enter to drill into any node and chat with AI about it. Exports to OPML, Markdown, HTML (interactive), XMind, FreeMind formats
-- **Flashcards & Quizzes** — Auto-generate study materials from your documents
+- **Interactive Mind Map** — Keyboard-navigate a tree of key concepts (planned TUI), export to Markdown, OPML, HTML (Markmap), JSON
+- **Flashcards & Quizzes** — Auto-generate study materials (Markdown / Anki CSV / JSON)
+- **Notebook Guides** — Auto-generated summary, key topics, and suggested questions to start exploring
+- **Podcast Generation** — Two-host conversational scripts + Fish Audio TTS → WAV audio
+  - `shoot-high podcast` for the script
+  - `shoot-high synthesize <script.json>` for the audio
 
 ### Planned
 
-- **✅ Podcast Script Generation** — Two-host conversational podcast script from your books
-  - Markdown/JSON export
-  - Configurable duration and host names
-  - TTS integration planned (Fish Audio / CosyVoice)
-- **Notebook Guides** — Auto-generated summary, key topics, and suggested questions to start exploring your documents
 - **Infographics** — HTML/CSS templates rendered to PNG (free, perfect Chinese text) + optional AI hero art
 - **Data Tables** — Extract and structure data from sources
 - **LLM Ranking Board** — Benchmark and compare LLMs on book-reading ability (see [ranking-board.md](ranking-board.md))
+- **TUI Interactive Mind Map** — Click a node, chat with AI about it (blue ocean, see [blueOcean.md](blueOcean.md))
 
 ### Not in scope (for now)
 
@@ -48,7 +48,7 @@ Google NotebookLM is powerful, but it's:
 
 ## Quick Start
 
-> ✅ Phase 1 MVP Complete — RAG chat with citations working!
+> ✅ Phases 1-3 complete — RAG chat, mind maps, flashcards, podcast, TTS, notebook guides all working!
 
 ```bash
 # Install
@@ -80,10 +80,6 @@ shootHigh mindmap ./my-books --export xmind
 # Generate flashcards
 shootHigh flashcard ./my-books
 
-# Generate podcast script + audio
-shootHigh podcast ./my-books
-shootHigh synthesize ./my-books/output/book1-podcast.json
-
 # Generate notebook guide (summary, key topics, suggested questions)
 shootHigh guide ./my-books
 
@@ -92,6 +88,12 @@ shootHigh guide ./my-books --questions 8
 
 # Export guide as JSON
 shootHigh guide ./my-books --format json
+
+# Generate podcast script
+shootHigh podcast ./my-books
+
+# Synthesize audio from the script (requires FISH_AUDIO_API_KEY)
+shootHigh synthesize ./my-books/output/book1-podcast.json
 ```
 
 ## Configuration
@@ -145,7 +147,7 @@ limits:
 | Mind Map (HTML) | mermaid.js | Click-to-explore in browser |
 | Mind Map (Export) | OPML, Markdown, XMind, FreeMind, MindManager | Interoperable with all major mind map apps |
 | Infographic | HTML/CSS + Puppeteer | Free, perfect CJK text rendering |
-| TTS | Fish Audio S2 / CosyVoice | Best Chinese voice quality |
+| TTS | Fish Audio S2 (default), CosyVoice (planned) | Best Chinese voice quality; pure-stdlib WAV join |
 | Image Gen | FLUX.2 Flex (Replicate) | $0.03-0.05/image, good for decorative art |
 | License | Apache 2.0 | Commercial-friendly, patent protection |
 

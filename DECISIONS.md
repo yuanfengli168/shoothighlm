@@ -56,11 +56,15 @@ Drop PDFs in a folder, run commands, get output files.
 
 ### TTS / 播客
 
-| 用途 | 方案 | 成本 |
-|------|------|------|
-| 默认中文 TTS | Fish Audio S2 API | 免费额度+按量 |
-| 备选 | 阿里云 CosyVoice | ¥0.01-0.04/千次 |
-| 双人播客 | LLM 写对话脚本 → 两声音分别生成 → 拼接 | 同上 |
+| 用途 | 方案 | 成本 | 状态 |
+|------|------|------|------|
+| 默认中文 TTS | Fish Audio S2 API | 免费额度+按量 | ✅ 已实现 |
+| 备选 | 阿里云 CosyVoice | ¥0.01-0.04/千次 | 🚧 Stub（接口未完成） |
+| 双人播客 | LLM 写对话脚本 → 两声音分别生成 → 拼接 | 同上 | ✅ 已实现（`shoot-high synthesize`） |
+
+- TTS 输出格式：WAV（pure-stdlib 拼接，无 ffmpeg/pydub 依赖）
+- 静音间隔：默认 0.4 秒（可通过 `--pause` 调整）
+- API Key 配置：`FISH_AUDIO_API_KEY` 环境变量或 `~/.shoothighlm/config.yaml`
 
 ### 思维导图
 
@@ -69,6 +73,14 @@ Drop PDFs in a folder, run commands, get output files.
 - ✅ **CLI 命令** — `shoot-high mindmap ./notebook --format <format>`
 - 🚧 **TUI 交互** — 键盘导航树 + 分屏对话（待实现）
 - **蓝海功能** — 无开源工具在 CLI 做此交互 (详见 blueOcean.md)
+
+### 笔记本引导（Notebook Guides）
+
+- ✅ **已实现** — `shoot-high guide ./notebook`
+- 自动生成：2-3 段摘要 + 5-8 关键主题 + 5 建议问题
+- 支持自定义问题数量（`--questions`）
+- 导出格式：Markdown / JSON
+- 跨所有 PDF 综合分析（不是单文件）
 
 ### 思维导图导出格式
 
@@ -88,18 +100,19 @@ Drop PDFs in a folder, run commands, get output files.
 
 ## 功能优先级
 
-| 优先级 | 功能 | 难度 | 方案 |
+| 优先级 | 功能 | 难度 | 状态 |
 |--------|------|------|------|
-| P0 | RAG 聊天 + 引用 | 中 | Ollama + bge-m3 + sqlite-vec |
-| P0 | PDF 源管理 | 中 | docling/marker 解析 → chunk → embed |
-| P1 | 交互式思维导图 | 中 | LLM 提取实体关系 → TUI 树 + 分屏对话，导出 OPML/Markdown/HTML/XMind |
-| P1 | 闪卡/测验 | 低 | 纯 LLM prompt |
-| P2 | 播客生成 | 高 | LLM 脚本 + Fish Audio 双声音 |
-| P2 | 笔记本引导问题 | 低 | LLM 自动生成 |
-| P3 | 信息图 (HTML) | 中 | 模板 + Puppeteer → PNG |
-| P3 | 数据表格 | 中 | LLM 提取结构化数据 |
-| P4 | 视频概述 | 很高 | 先跳过 |
-| P4 | 幻灯片 | 高 | 先跳过 |
+| P0 | RAG 聊天 + 引用 | 中 | ✅ Phase 1 完成 |
+| P0 | PDF 源管理 | 中 | ✅ Phase 1 完成 |
+| P1 | 思维导图（LLM 提取 + 导出） | 中 | ✅ Phase 2 完成（TUI 交互待做） |
+| P1 | 闪卡/测验 | 低 | ✅ Phase 2 完成 |
+| P2 | 笔记本引导问题 | 低 | ✅ Phase 3 完成（`shoot-high guide`） |
+| P2 | 播客生成（脚本） | 中 | ✅ Phase 3 完成 |
+| P2 | 播客生成（TTS 音频） | 高 | ✅ Phase 3 完成（`shoot-high synthesize`） |
+| P3 | 信息图 (HTML) | 中 | ⏳ 待做 |
+| P3 | 数据表格 | 中 | ⏳ 待做 |
+| P4 | 视频概述 | 很高 | ❌ 跳过 |
+| P4 | 幻灯片 | 高 | ❌ 跳过 |
 
 ## 硬限制与能力边界
 
@@ -138,10 +151,27 @@ Drop PDFs in a folder, run commands, get output files.
 
 ## Status
 
+### 已完成 ✅
 - [x] NotebookLM 功能研究
 - [x] 技术选型研究
 - [x] 中文 LLM 对比
 - [x] TTS/API 可行性
 - [x] 思维导图蓝海分析
 - [x] 架构设计文档
-- [ ] 实现（待讨论确认）
+- [x] Phase 1 — RAG 聊天 + PDF 源管理
+- [x] Phase 2 — 思维导图提取 + 闪卡
+- [x] Phase 3 — 播客脚本 + TTS 音频合成 + 笔记本引导
+
+### 待完成 ⏳
+- [ ] 信息图生成（HTML/CSS 模板 + Puppeteer → PNG）
+- [ ] 数据表格提取
+- [ ] 思维导图 TUI 交互（蓝海功能）
+- [ ] LLM 排名榜
+
+### 测试验证清单（待完成）
+- [ ] qwen3.5:cloud 中文长文档问答质量测试
+- [ ] qwen3.5:cloud PDF OCR 中文准确率测试
+- [ ] bge-m3 中文embedding检索召回率测试
+- [ ] 各模型实际token消耗与用量统计
+- [ ] 单文件50MB / 总500MB 压力测试
+- [ ] Fish Audio S2 真实端到端测试（需 API key）
