@@ -82,6 +82,7 @@ shootHigh flashcard ./my-books
 
 # Generate podcast script + audio
 shootHigh podcast ./my-books
+shootHigh synthesize ./my-books/output/book1-podcast.json
 
 # Generate notebook guide (summary, key topics, suggested questions)
 shootHigh guide ./my-books
@@ -178,16 +179,16 @@ See [ranking-board.md](ranking-board.md) for the vision.
 
 ## Status
 
-✅ **Phase 3 P2 In Progress** — Podcast + Notebook Guides complete, infographics next!
+✅ **Phase 3 P2 In Progress** — Podcast + TTS + Notebook Guides complete, infographics next!
 
-**Test Coverage:** 113 tests passing, 93% coverage ✅
+**Test Coverage:** 158 tests passing, 93% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|
 | Research | ✅ Done | NotebookLM analysis, LLM comparison, API research |
 | Phase 1 (P0) | ✅ Done | PDF parsing, chunking, embedding, RAG chat with citations |
 | Phase 2 (P1) | ✅ Done | Mind map extraction, flashcard generation |
-| Phase 3 (P2) | 🚧 In Progress | ✅ Podcast generation, ✅ Notebook guides, ⏳ Infographics |
+| Phase 3 (P2) | 🚧 In Progress | ✅ Podcast, ✅ TTS audio, ✅ Notebook guides, ⏳ Infographics |
 | Phase 4 (P3+) | ⏳ Planned | LLM ranking board, data tables |
 
 ## License

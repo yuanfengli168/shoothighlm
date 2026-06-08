@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Phase 3 P2 — TTS Audio Synthesis (Podcast)
+
+#### Added
+- `tts.py`: Multi-provider TTS for podcast audio
+  - `FishAudioProvider`: Fish Audio S2 API (default)
+  - `CosyVoiceProvider`: Alibaba Cloud CosyVoice (stub, not yet implemented)
+  - `PodcastSynthesizer`: Routes segments to host_a/host_b voices, concatenates with silence
+  - `concatenate_wav`: Pure-stdlib WAV joining (no ffmpeg/pydub needed)
+  - 94% test coverage
+- CLI command: `shoot-high synthesize <script.json>`
+  - `--provider`: TTS provider override
+  - `--voice-a` / `--voice-b`: Custom voice IDs
+  - `--output` / `-o`: Output WAV path
+  - `--pause`: Silence between segments (default 0.4s)
+- 28 unit tests + 9 CLI integration tests
+- Total tests: 158 passing
+- Test coverage: **93% overall** ✅
+
+#### Changed
+- CLI coverage improved from 87% to 88%
+
 ### Phase 3 P2 — Notebook Guide Generation
 
 #### Added

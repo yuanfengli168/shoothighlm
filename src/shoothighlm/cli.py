@@ -400,6 +400,77 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, ho
 
 
 @main.command()
+@click.argument("script", type=click.Path(exists=True))
+@click.option("--provider", default=None, help="TTS provider (fish-audio, cosyvoice)")
+@click.option("--voice-a", default=None, help="Voice ID for host A")
+@click.option("--voice-b", default=None, help="Voice ID for host B")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output WAV path")
+@click.option("--pause", default=0.4, help="Silence between segments (seconds)")
+def synthesize(
+    script: str,
+    provider: str,
+    voice_a: str,
+    voice_b: str,
+    output: str,
+    pause: float,
+):
+    """Synthesize audio from a podcast script (JSON format)"""
+    from .config import Config
+    from .tts import get_provider, PodcastSynthesizer, TTSError
+    
+    config = Config()
+    
+    # Load script JSON
+    script_path = Path(script)
+    try:
+        script_data = json.loads(script_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        rprint(f"[red]✗ Invalid JSON in script file:[/red] {e}")
+        return
+    
+    segments = script_data.get("segments", [])
+    if not segments:
+        rprint("[red]✗ Script has no segments to synthesize[/red]")
+        return
+    
+    # Get provider
+    provider_name = provider or config.get("tts", "provider", default="fish-audio")
+    
+    try:
+        tts_provider = get_provider(provider_name)
+    except TTSError as e:
+        rprint(f"[red]✗ TTS provider error:[/red] {e}")
+        rprint("[yellow]Tip:[/yellow] Set FISH_AUDIO_API_KEY environment variable, "
+               "or configure tts.api_key in ~/.shoothighlm/config.yaml")
+        return
+    
+    synth = PodcastSynthesizer(
+        tts_provider,
+        host_a_voice=voice_a,
+        host_b_voice=voice_b,
+    )
+    
+    try:
+        # Default output path
+        if output:
+            output_path = Path(output)
+        else:
+            output_path = script_path.parent / f"{script_path.stem}.wav"
+        
+        rprint(f"[blue]Synthesizing {len(segments)} segments via {tts_provider.name()}...[/blue]")
+        
+        result = synth.synthesize_script(segments, output_path, pause_seconds=pause)
+        
+        rprint(f"[green]✓ Audio saved:[/green] {result['output_path']}")
+        rprint(f"[green]✓ Duration:[/green] {result['duration_seconds']}s "
+               f"({result['segment_count']} segments)")
+    except TTSError as e:
+        rprint(f"[red]✗ Synthesis failed:[/red] {e}")
+    finally:
+        synth.close()
+
+
+@main.command()
 @click.argument("notebook", type=click.Path(exists=True))
 @click.option("--format", "fmt", type=click.Choice(["markdown", "json"]), default="markdown")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
