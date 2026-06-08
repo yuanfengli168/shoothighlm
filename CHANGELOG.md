@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Phase 3 P3 — Data Table Extraction
+
+#### Added
+- `tables.py`: Extract structured tabular data from PDFs
+  - `DataTable` dataclass with name, description, columns, rows, source
+  - `TableExtractor` class: LLM-based extraction with strict JSON validation
+  - 4 output formats: **Markdown** (default), **CSV**, **JSON**, **HTML**
+  - Robust to malformed LLM output (skips bad entries, keeps good ones)
+  - CSV output correctly quotes special chars (commas, quotes, newlines)
+  - 98% test coverage
+- CLI command: `shoot-high tables`
+  - `--max` / `-m`: Limit number of tables (default 3)
+  - `--format` / `-f`: markdown / csv / json / html
+  - `--output` / `-o`: Custom output path
+  - Multi-PDF support: extracts tables from every PDF in the notebook
+  - Graceful error handling: if one PDF fails, others still process
+- 30 unit tests + 12 CLI integration tests
+- Total tests: **239 passing**
+- Test coverage: **95% overall** ✅
+
+#### Changed
+- Coverage: 94% → **95%** (1224 stmts, 66 miss)
+
 ### Docs cleanup (2026-06-08)
 
 #### Changed

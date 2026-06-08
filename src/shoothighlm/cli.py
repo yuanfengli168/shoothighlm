@@ -637,5 +637,116 @@ def infographic(notebook: str, template: str, output: str, to_png: bool, width: 
         generator.close()
 
 
+@main.command()
+@click.argument("notebook", type=click.Path(exists=True))
+@click.option("--max", "max_tables", default=3, help="Maximum number of tables to extract")
+@click.option("--format", "fmt",
+              type=click.Choice(["markdown", "csv", "json", "html"]),
+              default="markdown", help="Output format")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
+def tables(notebook: str, max_tables: int, fmt: str, output: str):
+    """Extract data tables from PDFs (comparisons, statistics, lists, timelines)"""
+    from .config import Config
+    from .pdf import parse_pdf
+    from .tables import TableExtractor
+    
+    config = Config()
+    notebook_path = Path(notebook)
+    
+    # Find PDFs
+    pdfs = list(notebook_path.glob("*.pdf"))
+    if not pdfs:
+        rprint("[red]No PDFs found in notebook[/red]")
+        return
+    
+    rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
+    
+    extractor = TableExtractor(
+        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
+    )
+    
+    all_tables = []
+    try:
+        for pdf in pdfs:
+            rprint(f"[blue]Processing:[/blue] {pdf.name}")
+            text_gen = parse_pdf(pdf)
+            text = next(text_gen, "")
+            
+            if not text:
+                rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
+                continue
+            
+            rprint(f"[dim]Extracting up to {max_tables} tables...[/dim]")
+            try:
+                tables_found = extractor.extract(text, max_tables=max_tables, source=pdf.name)
+            except RuntimeError as e:
+                rprint(f"[red]✗ Extraction failed for {pdf.name}:[/red] {e}")
+                continue
+            
+            if tables_found:
+                rprint(f"[green]✓ Found {len(tables_found)} table(s) in {pdf.name}[/green]")
+                all_tables.extend(tables_found)
+            else:
+                rprint(f"[yellow]⚠ No tables found in {pdf.name}[/yellow]")
+        
+        if not all_tables:
+            rprint("[yellow]⚠ No tables extracted from any PDFs[/yellow]")
+            return
+        
+        rprint(f"[green]✓ Total: {len(all_tables)} table(s)[/green]")
+        
+        # Render output
+        if fmt == "markdown":
+            content = "# Data Tables\n\n"
+            content += f"_Extracted from {len(pdfs)} PDF(s)._\n\n"
+            for t in all_tables:
+                content += t.to_markdown() + "\n"
+            ext = ".md"
+        elif fmt == "csv":
+            # CSV can only meaningfully hold one table — use the first,
+            # but include metadata in the header.
+            content = "# Data Tables (CSV format — first table only)\n\n"
+            content += all_tables[0].to_csv()
+            if len(all_tables) > 1:
+                content += f"\n\n# Note: {len(all_tables) - 1} additional table(s) not included in CSV. Use --format json or markdown for all tables.\n"
+            ext = ".csv"
+        elif fmt == "json":
+            content = json.dumps(
+                [t.to_dict() for t in all_tables],
+                indent=2,
+                ensure_ascii=False,
+            )
+            ext = ".json"
+        elif fmt == "html":
+            content = "<!DOCTYPE html>\n<html><head><meta charset='UTF-8'>\n"
+            content += "<title>Data Tables</title>\n<style>\n"
+            content += "table.data-table { border-collapse: collapse; margin: 1em 0; }\n"
+            content += "table.data-table th, table.data-table td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }\n"
+            content += "table.data-table th { background: #f0f0f0; }\n"
+            content += "table.data-table caption { font-weight: bold; margin-bottom: 0.5em; }\n"
+            content += "</style>\n</head>\n<body>\n"
+            content += "<h1>Data Tables</h1>\n"
+            for t in all_tables:
+                content += t.to_html() + "\n"
+            content += "</body></html>\n"
+            ext = ".html"
+        
+        # Write to file
+        if output:
+            output_path = Path(output)
+        else:
+            output_dir = notebook_path / "output"
+            output_dir.mkdir(exist_ok=True)
+            output_path = output_dir / f"{notebook_path.name}-tables{ext}"
+        
+        output_path.write_text(content, encoding="utf-8")
+        rprint(f"[green]✓ Tables saved to:[/green] {output_path}")
+        
+    except (ValueError, RuntimeError) as e:
+        rprint(f"[red]✗ Tables extraction failed:[/red] {e}")
+    finally:
+        extractor.close()
+
+
 if __name__ == "__main__":
     main()

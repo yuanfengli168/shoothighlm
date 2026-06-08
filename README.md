@@ -37,10 +37,12 @@ Google NotebookLM is powerful, but it's:
 - **Infographics** — HTML/CSS templates rendered to PNG with CJK-perfect text
   - `shoot-high infographic <notebook>` (templates: `summary_card`, `topic_hierarchy`, `stats_card`)
   - Add `--png` to also produce a PNG image (uses Playwright/Chrome)
+- **Data Tables** — Extract comparisons, statistics, lists, and timelines as structured tables
+  - `shoot-high tables <notebook>` (4 output formats: Markdown, CSV, JSON, HTML)
+  - Use `--max N` to control how many tables to extract
 
 ### Planned
 
-- **Data Tables** — Extract and structure data from sources
 - **LLM Ranking Board** — Benchmark and compare LLMs on book-reading ability (see [ranking-board.md](ranking-board.md))
 - **TUI Interactive Mind Map** — Click a node, chat with AI about it (blue ocean, see [blueOcean.md](blueOcean.md))
 
@@ -106,6 +108,14 @@ shoot-high infographic ./my-books --template stats_card
 
 # Also render to PNG (requires playwright or system Chrome)
 shoot-high infographic ./my-books --png
+
+# Extract data tables (Markdown, CSV, JSON, HTML)
+shoot-high tables ./my-books
+
+# Limit number of tables, change format
+shoot-high tables ./my-books --max 5 --format csv
+shoot-high tables ./my-books --format json
+shoot-high tables ./my-books --format html
 ```
 
 ## Configuration
@@ -195,15 +205,15 @@ See [ranking-board.md](ranking-board.md) for the vision.
 
 ✅ **Phase 3 (P2+P3) Complete** — Podcast, TTS, Notebook Guides, and Infographics all shipped!
 
-**Test Coverage:** 197 tests passing, 94% coverage ✅
+**Test Coverage:** 239 tests passing, 95% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|
 | Research | ✅ Done | NotebookLM analysis, LLM comparison, API research |
 | Phase 1 (P0) | ✅ Done | PDF parsing, chunking, embedding, RAG chat with citations |
 | Phase 2 (P1) | ✅ Done | Mind map extraction, flashcard generation |
-| Phase 3 (P2) | ✅ Done | Podcast scripts, TTS audio, Notebook guides, Infographics |
-| Phase 4 (P3+) | ⏳ Planned | Interactive TUI mind map, LLM ranking board, data tables |
+| Phase 3 (P2) | ✅ Done | Podcast scripts, TTS audio, Notebook guides, Infographics, Data tables |
+| Phase 4 (P3+) | ⏳ Planned | Interactive TUI mind map, LLM ranking board |
 
 ## License
 

@@ -113,7 +113,7 @@ Drop PDFs in a folder, run commands, get output files.
 | P2 | 播客生成（脚本） | 中 | ✅ Phase 3 完成 |
 | P2 | 播客生成（TTS 音频） | 高 | ✅ Phase 3 完成（`shoot-high synthesize`） |
 | P3 | 信息图 (HTML + PNG) | 中 | ✅ Phase 3 完成（`shoot-high infographic`） |
-| P3 | 数据表格 | 中 | ⏳ 待做 |
+| P3 | 数据表格 | 中 | ✅ Phase 3 完成（`shoot-high tables`） |
 | P4 | 视频概述 | 很高 | ❌ 跳过 |
 | P4 | 幻灯片 | 高 | ❌ 跳过 |
 
@@ -165,10 +165,10 @@ Drop PDFs in a folder, run commands, get output files.
 - [x] Phase 2 — 思维导图提取 + 闪卡
 - [x] Phase 3 — 播客脚本 + TTS 音频合成 + 笔记本引导
 - [x] Phase 3 P3 — 信息图生成（3 模板 + HTML/PNG 输出）
-- [x] CI 覆盖门 + GitHub Actions workflow（197 测试，94% 覆盖）
+- [x] Phase 3 P3 — 数据表格提取（Markdown / CSV / JSON / HTML 输出）
+- [x] CI 覆盖门 + GitHub Actions workflow（239 测试，95% 覆盖）
 
 ### 待完成 ⏳
-- [ ] 数据表格提取
 - [ ] 思维导图 TUI 交互（蓝海功能）
 - [ ] LLM 排名榜
 - [ ] Codecov 集成（已上传但 token 未配）
