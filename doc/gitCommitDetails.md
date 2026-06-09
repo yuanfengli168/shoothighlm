@@ -11,9 +11,9 @@ the commit metadata and a one-line summary of the change.
 |---|---|
 | **Date** | 2026-06-09 15:39:28 +0800 |
 | **Branch** | `master` |
-| **Commit ID (full)** | `4dd0532cd71e35c160d34143455059a6bdf18699` |
-| **Commit ID (short)** | `4dd0532` |
-| **Note** | This file was added via `git commit --amend --no-edit` after the initial commit, so the final hash is `4dd0532` (not the originally-planned `49797a8`). Date, author, branch, and message are identical. |
+| **Commit ID (full)** | `7ce28a569712fabf975f7844ace88f5791bdc0b2` |
+| **Commit ID (short)** | `7ce28a5` |
+| **Note** | This file was added via `git commit --amend --no-edit` after the initial commit, so the final hash is `7ce28a5` (not the originally-planned `49797a8`). Date, author, branch, and message are identical. The hash will keep changing as long as this doc is updated post-commit — the *date + author + subject* are the stable identifiers. |
 | **Parent** | `51991f1975443a8dc134faf13788621981f8b16c` (`51991f1` — _"index error fixed"_) |
 | **Author** | `yuanfengli168 <jackieliglobal@gmail.com>` |
 | **Remote** | `https://github.com/yuanfengli168/shoothighlm.git` |
