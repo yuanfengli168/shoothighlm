@@ -122,7 +122,8 @@ def test_guide_custom_output_path(runner, temp_notebook_with_pdfs, mock_guide):
                 ])
                 
                 assert result.exit_code == 0
-                assert str(output_path) in result.output
+                # Strip whitespace to handle rich's terminal-width line wrapping
+                assert str(output_path) in result.output.replace("\n", "")
                 assert output_path.exists()
                 # Verify content
                 content = output_path.read_text()

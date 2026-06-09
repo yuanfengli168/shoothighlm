@@ -65,7 +65,8 @@ class PodcastGenerator:
         self.base_url = base_url
         self.host_a_name = host_a_name
         self.host_b_name = host_b_name
-        self.client = httpx.Client(timeout=120.0)
+        # See mindmap.py for the rationale on 600s timeout
+        self.client = httpx.Client(timeout=600.0)
     
     def generate(
         self,
@@ -85,7 +86,7 @@ class PodcastGenerator:
             PodcastScript object
         """
         # Truncate if too long
-        max_chars = 30000
+        max_chars = 12000  # was 30000-50000; smaller = faster
         if len(text) > max_chars:
             text = text[:max_chars] + "... [truncated]"
         

@@ -109,7 +109,8 @@ class TableExtractor:
     ):
         self.chat_model = chat_model
         self.base_url = base_url
-        self.client = httpx.Client(timeout=120.0)
+        # See mindmap.py for the rationale on 600s timeout
+        self.client = httpx.Client(timeout=600.0)
     
     def close(self) -> None:
         self.client.close()
@@ -151,7 +152,7 @@ class TableExtractor:
             return []
         
         # Truncate very long text
-        max_chars = 30000
+        max_chars = 12000  # was 30000-50000; smaller = faster
         if len(text) > max_chars:
             text = text[:max_chars] + "... [truncated]"
         

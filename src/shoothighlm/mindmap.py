@@ -69,7 +69,10 @@ class MindMapExtractor:
     ):
         self.chat_model = chat_model
         self.base_url = base_url
-        self.client = httpx.Client(timeout=120.0)
+        # 600s timeout: cloud models (qwen3.5:cloud etc.) can take 3-5 min
+        # on first call with thinking mode enabled, especially for long
+        # 50K-char prompts.
+        self.client = httpx.Client(timeout=600.0)
     
     def extract(self, text: str, title: str = "Document") -> MindMapNode:
         """
@@ -83,7 +86,7 @@ class MindMapExtractor:
             MindMapNode tree structure
         """
         # Truncate if too long (keep under model context limit)
-        max_chars = 50000
+        max_chars = 12000  # was 30000-50000; smaller = faster
         if len(text) > max_chars:
             text = text[:max_chars] + "... [truncated]"
         

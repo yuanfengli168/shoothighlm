@@ -167,7 +167,8 @@ class InfographicGenerator:
     ):
         self.chat_model = chat_model
         self.base_url = base_url
-        self.client = httpx.Client(timeout=120.0)
+        # See mindmap.py for the rationale on 600s timeout
+        self.client = httpx.Client(timeout=600.0)
         self.jinja_env = jinja2.Environment(
             autoescape=jinja2.select_autoescape(["html"]),
             trim_blocks=True,
@@ -204,7 +205,7 @@ class InfographicGenerator:
             )
         
         # Truncate long text
-        max_chars = 30000
+        max_chars = 12000  # was 30000-50000; smaller = faster
         if len(text) > max_chars:
             text = text[:max_chars] + "... [truncated]"
         

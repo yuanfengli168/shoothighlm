@@ -174,7 +174,8 @@ def test_podcast_custom_output_path(runner, temp_notebook_with_pdf):
                 ])
                 
                 assert result.exit_code == 0
-                assert str(output_path) in result.output
+                # Strip whitespace to handle rich's terminal-width line wrapping
+                assert str(output_path) in result.output.replace("\n", "")
                 assert output_path.exists()
 
 

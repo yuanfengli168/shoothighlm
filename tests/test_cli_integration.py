@@ -115,7 +115,7 @@ def test_mindmap_custom_output_path(runner, temp_notebook_with_pdf):
     
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "custom-output.md"
-        
+
         with patch('shoothighlm.mindmap.MindMapExtractor') as mock_extractor_class:
             mock_extractor = MagicMock()
             mock_extractor.extract.return_value = mock_node
@@ -130,9 +130,11 @@ def test_mindmap_custom_output_path(runner, temp_notebook_with_pdf):
                     "--format", "markdown",
                     "--output", str(output_path),
                 ])
-                
+
                 assert result.exit_code == 0
-                assert str(output_path) in result.output
+                # Strip whitespace to handle rich's terminal-width line wrapping
+                # which can insert a newline mid-path on long temp paths.
+                assert str(output_path) in result.output.replace("\n", "")
                 assert output_path.exists()
 
 
@@ -249,7 +251,7 @@ def test_flashcard_custom_output_path(runner, temp_notebook_with_pdf):
     
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "custom-flashcards.csv"
-        
+
         with patch('shoothighlm.flashcard.FlashcardGenerator') as mock_gen_class:
             mock_gen = MagicMock()
             mock_gen.generate.return_value = mock_cards
@@ -264,9 +266,11 @@ def test_flashcard_custom_output_path(runner, temp_notebook_with_pdf):
                     "--format", "csv",
                     "--output", str(output_path),
                 ])
-                
+
                 assert result.exit_code == 0
-                assert str(output_path) in result.output
+                # Strip whitespace to handle rich's terminal-width line wrapping
+                # which can insert a newline mid-path on long temp paths.
+                assert str(output_path) in result.output.replace("\n", "")
                 assert output_path.exists()
 
 

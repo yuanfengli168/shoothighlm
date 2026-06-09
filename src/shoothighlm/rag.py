@@ -45,7 +45,8 @@ class RAGChat:
         self.base_url = base_url
         self.top_k = top_k
         self.min_similarity = min_similarity
-        self.client = httpx.Client(timeout=120.0)
+        # See mindmap.py for the rationale on 600s timeout
+        self.client = httpx.Client(timeout=600.0)
     
     def retrieve(self, query: str) -> List[SearchResult]:
         """Retrieve relevant chunks for a query"""

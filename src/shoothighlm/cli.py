@@ -203,16 +203,16 @@ def mindmap(notebook: str, fmt: str, output: str):
         # Process first PDF (for now)
         pdf = pdfs[0]
         rprint(f"[blue]Processing:[/blue] {pdf.name}")
-        
-        text_gen = parse_pdf(pdf)
-        text = next(text_gen, "")
-        
-        if not text:
+
+        # Concatenate text from every page (was: only first page!)
+        all_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
+        if not all_text.strip():
             rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
             return
-        
+
+        rprint(f"  Extracted {len(all_text):,} chars")
         rprint("[dim]Extracting mind map...[/dim]")
-        mindmap_tree = extractor.extract(text, title=pdf.stem)
+        mindmap_tree = extractor.extract(all_text, title=pdf.stem)
         
         # Export based on format
         if fmt == "markdown":
@@ -295,16 +295,15 @@ def flashcard(notebook: str, num: int, fmt: str, output: str):
         # Process first PDF (for now)
         pdf = pdfs[0]
         rprint(f"[blue]Processing:[/blue] {pdf.name}")
-        
-        text_gen = parse_pdf(pdf)
-        text = next(text_gen, "")
-        
-        if not text:
+
+        # Concatenate text from every page (was: only first page!)
+        all_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
+        if not all_text.strip():
             rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
             return
-        
+
         rprint(f"[dim]Generating {num} flashcards...[/dim]")
-        cards = generator.generate(text, num_cards=num, source=pdf.name)
+        cards = generator.generate(all_text, num_cards=num, source=pdf.name)
         
         if not cards:
             rprint("[yellow]⚠ No flashcards generated[/yellow]")
@@ -378,16 +377,15 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, ho
         # Process first PDF (for now)
         pdf = pdfs[0]
         rprint(f"[blue]Processing:[/blue] {pdf.name}")
-        
-        text_gen = parse_pdf(pdf)
-        text = next(text_gen, "")
-        
-        if not text:
+
+        # Concatenate text from every page (was: only first page!)
+        all_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
+        if not all_text.strip():
             rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
             return
-        
+
         rprint(f"[dim]Generating {duration}-minute podcast script...[/dim]")
-        script = generator.generate(text, title=pdf.stem, duration_minutes=duration)
+        script = generator.generate(all_text, title=pdf.stem, duration_minutes=duration)
         
         rprint(f"[green]✓ Generated {len(script.segments)} dialogue segments[/green]")
         
@@ -518,10 +516,9 @@ def guide(notebook: str, fmt: str, output: str, questions: int):
         sources = []
         for pdf in pdfs:
             rprint(f"[blue]Processing:[/blue] {pdf.name}")
-            text_gen = parse_pdf(pdf)
-            text = next(text_gen, "")
-            if text:
-                all_text += f"\n\n=== {pdf.name} ===\n\n" + text
+            pdf_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
+            if pdf_text:
+                all_text += f"\n\n=== {pdf.name} ===\n\n" + pdf_text
                 sources.append(pdf.name)
             else:
                 rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
@@ -598,18 +595,17 @@ def infographic(notebook: str, template: str, output: str, to_png: bool, width: 
         sources = []
         for pdf in pdfs:
             rprint(f"[blue]Processing:[/blue] {pdf.name}")
-            text_gen = parse_pdf(pdf)
-            text = next(text_gen, "")
-            if text:
-                all_text += f"\n\n=== {pdf.name} ===\n\n" + text
+            all_text_pdf = "\n\n".join(t for t in parse_pdf(pdf) if t)
+            if all_text_pdf:
+                all_text += f"\n\n=== {pdf.name} ===\n\n" + all_text_pdf
                 sources.append(pdf.name)
             else:
                 rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
-        
+
         if not all_text.strip():
             rprint("[red]No text extracted from any PDFs[/red]")
             return
-        
+
         rprint(f"[dim]Generating {template} infographic...[/dim]")
         info = generator.generate(
             all_text,
@@ -684,16 +680,15 @@ def tables(notebook: str, max_tables: int, fmt: str, output: str):
     try:
         for pdf in pdfs:
             rprint(f"[blue]Processing:[/blue] {pdf.name}")
-            text_gen = parse_pdf(pdf)
-            text = next(text_gen, "")
-            
-            if not text:
+            all_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
+
+            if not all_text.strip():
                 rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
                 continue
             
             rprint(f"[dim]Extracting up to {max_tables} tables...[/dim]")
             try:
-                tables_found = extractor.extract(text, max_tables=max_tables, source=pdf.name)
+                tables_found = extractor.extract(all_text, max_tables=max_tables, source=pdf.name)
             except RuntimeError as e:
                 rprint(f"[red]✗ Extraction failed for {pdf.name}:[/red] {e}")
                 continue
