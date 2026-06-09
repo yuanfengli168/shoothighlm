@@ -104,9 +104,9 @@ explicit control.
 
 #### Test Coverage
 
-- **302 tests passing, 1 skipped**
-- Coverage at **94.23%** ✅ (above the 93% threshold)
-- New test files:
+- **318 tests passing, 1 skipped**
+- Coverage at **94.80%** ✅ (above the 93% threshold)
+- New test files (this commit + previous):
   - `tests/test_cli_helpers.py` (16) — `_is_cloud_error` and
     `resolve_chat_model` priority chain
   - `tests/test_use_full_flag.py` (14) — `--full` flag propagation
@@ -118,12 +118,105 @@ explicit control.
   - `tests/test_cli_generator_errors.py` (12) — cloud + generic
     error paths in mindmap, flashcard, podcast, guide, infographic,
     tables
+  - `tests/test_rag.py` (2 new) — fallback_top_n behavior,
+    `_used_fallback` flag
+  - `tests/test_chat_flags.py` (4) — `--show-sources`,
+    `--min-similarity`, `fallback_top_n` propagation
+  - `tests/test_synthesize_md.py` (3) — synthesize accepts
+    `.json` AND `.md` podcast scripts
+  - `tests/test_podcast_parser.py` (7) — `_parse_markdown_script`
+    round-trip with `PodcastScript.to_markdown()`
 - Per-file coverage: `embedding.py` 100%, `vectorstore.py` 100%,
-  `pdf.py` 95%, all generators 96-98%
+  `podcast.py` 99%, `rag.py` 96%, `pdf.py` 95%
 
 ---
 
 ## [Unreleased] (continued — to be moved to next release)
+
+### Chat: smart retrieval fallback (the "couldn't find relevant information" fix)
+
+#### Problem
+
+With bge-m3 + Chinese, observed max cosine similarity is 0.40–0.55.
+A strict `min_similarity: 0.5` (or higher) would return "couldn't
+find relevant information" for valid questions whose answer IS in
+the corpus — the user would see an answer that was there, returned
+as nothing.
+
+Example: user asked "可以总结一下第一章节讲了什么吗?" against a
+1,221-page Chinese book. Top 5 chunks had similarity 0.48, 0.48,
+0.47, 0.47, 0.47 — all below 0.5 threshold. Chat returned
+"couldn't find relevant information" even though chunk #2 contained
+the actual table of contents for the book.
+
+#### Fix: two-stage retrieval with `fallback_top_n`
+
+1. Retrieve top `top_k` chunks (default 5)
+2. Stage 1: keep chunks where `similarity >= min_similarity`
+3. If stage 1 returned nothing: fall back to the top `fallback_top_n`
+   chunks regardless of threshold (default 3)
+4. If still no chunks: hard fail (return "couldn't find relevant info")
+
+When the fallback path is used, the response is prefixed with a
+`[dim]Note: ...[/dim]` explaining that the answer is best-effort
+and pointing the user to lower their `min_similarity`.
+
+#### New config knobs
+
+```yaml
+rag:
+  min_similarity: 0.4         # was 0.5 (still too strict for bge-m3 + Chinese)
+  fallback_top_n: 3           # NEW: when threshold filtering yields nothing, use top-3 anyway
+```
+
+#### New CLI flags on `shoot-high chat`
+
+- `--show-sources` — print the retrieved chunks + their similarity
+  scores before the answer. Useful for debugging "why is chat saying
+  no relevant info?"
+- `--min-similarity FLOAT` — override the config value for one call.
+  No need to edit the config to experiment.
+
+#### Files changed
+
+- `src/shoothighlm/rag.py` — new `fallback_top_n` param, two-stage
+  filtering, `_used_fallback` flag for transparency
+- `src/shoothighlm/cli.py` — new `--show-sources` and
+  `--min-similarity` flags on `chat`
+- `config.template.yaml` — `fallback_top_n: 3` + lower
+  `min_similarity: 0.4` recommendation
+
+### Synthesize: accept both `.json` and `.md` podcast scripts
+
+`shoot-high podcast` defaults to **Markdown** for human reading.
+`shoot-high synthesize` used to require **JSON**. That was a
+stale-docs trap: users who ran the default `podcast` command got
+`.md`, then `synthesize` would say "Invalid JSON".
+
+**Fix:** `synthesize` now accepts both formats. The `.md` is parsed
+back into segments via the new `_parse_markdown_script()` helper
+(inverse of `PodcastScript.to_markdown()`).
+
+```bash
+# Old: regenerate as JSON first
+shoot-high podcast ./my-books --format json
+shoot-high synthesize ./my-books/output/book1-podcast.json
+
+# NEW: just feed the .md directly
+shoot-high synthesize ./my-books/output/book1-podcast.md
+```
+
+Also fixes a bug: synthesize previously printed a misleading
+"Invalid JSON" error when given a `.md` file. Now it parses
+markdown and gives a clear "Loaded N segments" message.
+
+#### Files changed
+
+- `src/shoothighlm/podcast.py` — new `_parse_markdown_script()`
+  function (regex-based, handles Chinese, multi-line, metadata
+  lines)
+- `src/shoothighlm/cli.py` — synthesize dispatches on file
+  extension; both paths use the same TTS code
 
 ### Bug fix: CLI exception handlers now catch httpx errors
 

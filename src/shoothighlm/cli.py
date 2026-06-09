@@ -186,7 +186,9 @@ def index(notebook: str):
 @click.argument("question", nargs=-1)
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
-def chat(notebook: str, question: tuple[str], model: str, use_local: bool):
+@click.option("--show-sources", is_flag=True, help="Print the retrieved chunks before the answer (debugging)")
+@click.option("--min-similarity", type=float, default=None, help="Override rag.min_similarity for this call only")
+def chat(notebook: str, question: tuple[str], model: str, use_local: bool, show_sources: bool, min_similarity: float | None):
     """Chat with your PDFs"""
     from .config import Config
     from .embedding import get_embedder
@@ -206,33 +208,50 @@ def chat(notebook: str, question: tuple[str], model: str, use_local: bool):
     store = VectorStore(db_path)
     embedder = get_embedder(model=config.get("models", "embedding", default="bge-m3"))
     chat_model = resolve_chat_model(config, use_local, model)
+    effective_min_sim = (
+        min_similarity
+        if min_similarity is not None
+        else config.get("rag", "min_similarity", default=0.4)
+    )
 
     rag = RAGChat(
         vectorstore=store,
         embedder=embedder,
         chat_model=chat_model,
         top_k=config.get("rag", "top_k", default=5),
-        min_similarity=config.get("rag", "min_similarity", default=0.7),
+        min_similarity=effective_min_sim,
+        fallback_top_n=config.get("rag", "fallback_top_n", default=3),
     )
+
+    def ask(query: str) -> None:
+        rprint(f"[bold]Q:[/bold] {query}")
+        if show_sources:
+            # Show what was retrieved so the user can debug
+            results = rag.retrieve(query)
+            if not results:
+                rprint("[yellow]No chunks retrieved (empty index?)[/yellow]")
+            else:
+                rprint(f"[dim]Retrieved {len(results)} chunks (min_similarity={effective_min_sim:.2f}):[/dim]")
+                for i, r in enumerate(results, 1):
+                    sim = 1 - r.distance
+                    passes = "✓" if sim >= effective_min_sim else "↓ (fallback)"
+                    rprint(f"  {i}. {sim:.3f} {passes} | {r.text[:80].strip()!r}")
+        rprint("[dim]Thinking...[/dim]")
+        try:
+            response = rag.chat(query)
+        except Exception as e:
+            if _is_cloud_error(e):
+                rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                rprint(_OLLAMA_CLOUD_HINT)
+            else:
+                rprint(f"[red]✗ Chat failed:[/red] {e}")
+            return
+        rprint(f"[green]A:[/green] {response.answer}")
 
     try:
         if question:
-            # Single question mode
-            query = " ".join(question)
-            rprint(f"[bold]Q:[/bold] {query}")
-            rprint("[dim]Thinking...[/dim]")
-            try:
-                response = rag.chat(query)
-            except Exception as e:
-                if _is_cloud_error(e):
-                    rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
-                    rprint(_OLLAMA_CLOUD_HINT)
-                else:
-                    rprint(f"[red]✗ Chat failed:[/red] {e}")
-                return
-            rprint(f"[green]A:[/green] {response.answer}")
+            ask(" ".join(question))
         else:
-            # Interactive mode
             rprint(f"[green]Chat mode (model: {chat_model}). Type 'quit' to exit.[/green]")
             while True:
                 try:
@@ -243,17 +262,7 @@ def chat(notebook: str, question: tuple[str], model: str, use_local: bool):
                     break
                 if not query.strip():
                     continue
-                rprint("[dim]Thinking...[/dim]")
-                try:
-                    response = rag.chat(query)
-                except Exception as e:
-                    if _is_cloud_error(e):
-                        rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
-                        rprint(_OLLAMA_CLOUD_HINT)
-                        return
-                    rprint(f"[red]✗ Chat failed:[/red] {e}")
-                    continue
-                rprint(f"[green]A:[/green] {response.answer}")
+                ask(query)
     finally:
         rag.close()
         store.close()
@@ -545,28 +554,55 @@ def synthesize(
     output: str,
     pause: float,
 ):
-    """Synthesize audio from a podcast script (JSON format)"""
+    """Synthesize audio from a podcast script (JSON or Markdown)"""
     from .config import Config
     from .tts import get_provider, PodcastSynthesizer, TTSError
-    
+    from .podcast import _parse_markdown_script  # parser for the .md case
+
     config = Config()
-    
-    # Load script JSON
+
+    # Load script. Two formats are supported:
+    #   .json — the natural output of `podcast --format json`
+    #   .md   — the default human-readable output of `podcast`. We parse
+    #            it back into segments (regex on "**Speaker:** text")
     script_path = Path(script)
-    try:
-        script_data = json.loads(script_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        rprint(f"[red]✗ Invalid JSON in script file:[/red] {e}")
-        return
-    
-    segments = script_data.get("segments", [])
+    raw = script_path.read_text(encoding="utf-8")
+
+    if script_path.suffix.lower() == ".json":
+        try:
+            script_data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            rprint(f"[red]✗ Invalid JSON in script file:[/red] {e}")
+            return
+        title = script_data.get("title", script_path.stem)
+        host_a_name = script_data.get("host_a_name", "Alex")
+        host_b_name = script_data.get("host_b_name", "Jamie")
+        segments = script_data.get("segments", [])
+    else:
+        # Markdown case
+        try:
+            md = _parse_markdown_script(raw)
+        except Exception as e:
+            rprint(f"[red]✗ Failed to parse Markdown script:[/red] {e}")
+            rprint("[yellow]Tip:[/yellow] Regenerate with `shoot-high podcast ... --format json`")
+            return
+        title = md.get("title", script_path.stem)
+        host_a_name = md.get("host_a_name", "Alex")
+        host_b_name = md.get("host_b_name", "Jamie")
+        segments = md.get("segments", [])
+
     if not segments:
         rprint("[red]✗ Script has no segments to synthesize[/red]")
         return
-    
+
+    rprint(
+        f"[dim]Loaded {len(segments)} segments "
+        f"(hosts: {host_a_name} & {host_b_name}, title: {title!r})[/dim]"
+    )
+
     # Get provider
     provider_name = provider or config.get("tts", "provider", default="fish-audio")
-    
+
     try:
         tts_provider = get_provider(provider_name)
     except TTSError as e:
@@ -574,7 +610,7 @@ def synthesize(
         rprint("[yellow]Tip:[/yellow] Set FISH_AUDIO_API_KEY environment variable, "
                "or configure tts.api_key in ~/.shoothighlm/config.yaml")
         return
-    
+
     synth = PodcastSynthesizer(
         tts_provider,
         host_a_voice=voice_a,

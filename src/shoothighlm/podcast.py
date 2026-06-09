@@ -37,18 +37,86 @@ class PodcastScript:
             "---",
             "",
         ]
-        
+
         for segment in self.segments:
             speaker = segment["speaker"]
             text = segment["text"]
             lines.append(f"**{speaker}:** {text}")
             lines.append("")
-        
+
         return "\n".join(lines)
-    
+
     def to_json(self) -> str:
         """Convert to JSON string"""
         return json.dumps(self.to_dict(), indent=2, ensure_ascii=False)
+
+
+def _parse_markdown_script(md_text: str) -> dict:
+    """Parse a markdown podcast script back into a dict.
+
+    Inverse of `PodcastScript.to_markdown()`. Used by `shoot-high
+    synthesize` so users can feed it either a `.json` (the natural
+    format) or a `.md` (the human-readable default) without having
+    to regenerate the script.
+
+    Markdown shape:
+        # Title
+        **Duration:** 5 minutes
+        **Hosts:** Alex & Jamie
+        ---
+        **Alex:** Hello ...
+        **Jamie:** Hi ...
+
+    Returns: dict with keys `title`, `host_a_name`, `host_b_name`,
+    `segments: [{speaker, text}, ...]`.
+    """
+    import re
+
+    title = ""
+    host_a_name = "Alex"
+    host_b_name = "Jamie"
+    segments: list[dict] = []
+
+    # Title: first "# ..." line
+    title_match = re.search(r"^#\s+(.+?)\s*$", md_text, re.MULTILINE)
+    if title_match:
+        title = title_match.group(1).strip()
+
+    # Hosts line: **Hosts:** A & B
+    hosts_match = re.search(
+        r"\*\*Hosts:\*\*\s*(.+?)\s*$", md_text, re.MULTILINE
+    )
+    if hosts_match:
+        hosts_str = hosts_match.group(1).strip()
+        # Split on " & " (the format we use)
+        parts = re.split(r"\s*[&&]\s*", hosts_str, maxsplit=1)
+        if len(parts) == 2:
+            host_a_name, host_b_name = parts[0].strip(), parts[1].strip()
+
+    # Segments: **Speaker:** text  (multiline, until next **Speaker:** or EOF)
+    # Skip lines whose label is a known metadata field (Duration, Hosts, etc.)
+    meta_labels = {"duration", "hosts", "title", "date", "source", "language"}
+
+    seg_pattern = re.compile(
+        r"^\*\*([^*]+?):\*\*\s*(.*?)(?=^\*\*[^*]+?:\*\*|\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    for m in seg_pattern.finditer(md_text):
+        speaker = m.group(1).strip()
+        if speaker.lower() in meta_labels:
+            continue
+        text = m.group(2).strip()
+        # Collapse multiple newlines into single spaces
+        text = re.sub(r"\s*\n\s*", " ", text)
+        if text:
+            segments.append({"speaker": speaker, "text": text})
+
+    return {
+        "title": title,
+        "host_a_name": host_a_name,
+        "host_b_name": host_b_name,
+        "segments": segments,
+    }
 
 
 class PodcastGenerator:

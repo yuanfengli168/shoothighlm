@@ -104,8 +104,17 @@ shoot-high index ./my-books
 # Chat with your books
 shoot-high chat ./my-books
 
+# Debug: see what chunks were retrieved + their similarity scores
+shoot-high chat ~/my-books "可以总结一下第一章节讲了什么吗?" --show-sources
+
+# Per-call: override the similarity threshold (no need to edit config)
+shoot-high chat ~/my-books "问题" --min-similarity 0.3
+
 # Generate mind map (primary: Markdown)
 shoot-high mindmap ./my-books
+
+# --full: 50K-char prompt (vs 12K default) for higher quality on long books
+shoot-high mindmap ./my-books --full
 
 # Generate mind map (interactive HTML preview)
 shoot-high mindmap ./my-books --format html
@@ -117,9 +126,12 @@ shoot-high mindmap ./my-books --export xmind
 
 # Generate flashcards
 shoot-high flashcard ./my-books
+shoot-high flashcard ./my-books --full    # 50K-char prompt
+shoot-high flashcard ./my-books -n 20    # 20 cards instead of 10
 
 # Generate notebook guide (summary, key topics, suggested questions)
 shoot-high guide ./my-books
+shoot-high guide ./my-books --full        # 50K-char prompt
 
 # Custom number of questions
 shoot-high guide ./my-books --questions 8
@@ -129,13 +141,20 @@ shoot-high guide ./my-books --format json
 
 # Generate podcast script (defaults to Markdown for human reading)
 shoot-high podcast ./my-books
+shoot-high podcast ./my-books --full      # 50K-char prompt
 
-# To synthesize audio, generate the script as JSON first
-shoot-high podcast ./my-books --format json
+# The .md script is human-readable; .json is what synthesize needs.
+# Pick one based on what you want to do next.
+shoot-high podcast ./my-books --format json      # for synthesize
+shoot-high podcast ./my-books --format markdown  # for reading / sharing
+
+# Synthesize audio from EITHER format
 shoot-high synthesize ./my-books/output/book1-podcast.json
+shoot-high synthesize ./my-books/output/book1-podcast.md    # NEW: works too
 
 # Generate an infographic (HTML by default)
 shoot-high infographic ./my-books
+shoot-high infographic ./my-books --full    # 50K-char prompt
 
 # Choose a different template
 shoot-high infographic ./my-books --template topic_hierarchy
@@ -146,11 +165,43 @@ shoot-high infographic ./my-books --png
 
 # Extract data tables (Markdown, CSV, JSON, HTML)
 shoot-high tables ./my-books
+shoot-high tables ./my-books --full        # 50K-char prompt
 
 # Limit number of tables, change format
 shoot-high tables ./my-books --max 5 --format csv
 shoot-high tables ./my-books --format json
 shoot-high tables ./my-books --format html
+```
+
+### A note on `--full`
+
+Add `--full` to any of the 6 LLM commands (`chat` is excluded — it uses
+RAG, not direct prompting) to use a **50K-character prompt** instead of
+the default 12K. The 12K default covers roughly the first 30–40 pages of
+a 1,000-page book (intro, TOC, copyright); `--full` covers 4× more.
+
+| Command | Default | With `--full` |
+|---|---|---|
+| `mindmap` | 12K chars (≈ 3K tokens) | 50K chars (≈ 12K tokens) |
+| `flashcard` | 12K | 50K |
+| `podcast` | 12K | 50K |
+| `guide` | 12K | 50K |
+| `infographic` | 12K | 50K |
+| `tables` | 12K | 50K |
+
+Trade-off: `--full` is **~4× slower** (3–5 min on cloud, 8–10 min
+local for a 1,000-page book). Use it when you care about quality;
+use the default when you want to iterate quickly.
+
+**Example** (mentioned in the previous user feedback, "mindmap quality
+is weak on long books"):
+
+```bash
+# Default: fast (~30s cloud) but only covers the first ~30 pages
+shoot-high mindmap ~/my-books
+
+# --full: slower (~3min cloud) but covers ~4× more of the book
+shoot-high mindmap ~/my-books --full
 ```
 
 ## Configuration
@@ -178,6 +229,50 @@ limits:
   max_files: 50
   max_tokens: 500K
 ```
+
+### TTS: how to set `FISH_AUDIO_API_KEY`
+
+`FISH_AUDIO_API_KEY` is needed **only if you want to run `shoot-high synthesize`** (turning a podcast script into audio). Other commands (`chat`, `mindmap`, `flashcard`, `podcast`, `guide`, `infographic`, `tables`, `index`) don't need it.
+
+#### Step 1 — Get an API key
+
+1. Sign up at [fish.audio](https://fish.audio/) (free tier is available)
+2. Go to **Settings → API Keys** and create a new key
+3. Copy the key (looks like `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+
+#### Step 2 — Set the key (pick ONE method)
+
+**Method A — environment variable (recommended, session-scoped):**
+
+```bash
+# In your ~/.zshrc / ~/.bashrc so it persists across sessions:
+export FISH_AUDIO_API_KEY="your-key-here"
+
+# Or for a one-off command:
+FISH_AUDIO_API_KEY="your-key-here" shoot-high synthesize ./my-books/output/book1-podcast.json
+```
+
+**Method B — in `~/.shoothighlm/config.yaml`:**
+
+```yaml
+tts:
+  provider: "fish-audio"
+  api_key: "your-key-here"     # uncomment and paste your key
+```
+
+**Method C — check the key works:**
+
+```bash
+# Quick smoke test (should not error)
+shoot-high synthesize ./my-books/output/book1-podcast.md
+# If you see "✗ TTS provider error: Fish Audio API key not found",
+# the env var / config didn't take. See Troubleshooting below.
+```
+
+#### Alternative TTS providers
+
+- **CosyVoice** (Alibaba, better in China): set `tts.provider: cosyvoice` in config and `COSYVOICE_API_KEY` env var
+- See [TTS docs](doc/TTS.md) (planned) for the full provider list
 
 ## Supported LLM Providers
 
@@ -238,11 +333,14 @@ See [ranking-board.md](ranking-board.md) for the vision.
 | `shoot-high mindmap` hangs 10+ min on a long PDF | Default backend was docling OCR (slow) | Already changed to `pypdf` by default. Override with `SHOOTHIGHLM_PDF_BACKEND=docling` only for scanned PDFs |
 | `httpx.ReadTimeout: timed out` after 120s | Cloud model + thinking mode + long prompt = 50-100s+ | All LLM clients now use 600s timeout. If you still see this, check `ollama ps` — your model may be stuck loading |
 | `500 Internal Server Error: the input length exceeds the context length` | bge-m3 has 8K-token limit; dense Chinese overflows | Embedder now auto-truncates to 6K chars with sentence-boundary cut. Your `chunk_size` config is capped to 2000 chars by default |
-| `shoot-high chat` returns "couldn't find relevant information" even after indexing | `min_similarity` too high (0.7 was default) | Set `~/.shoothighlm/config.yaml` → `rag.min_similarity: 0.5` (bge-m3 + Chinese rarely exceeds 0.65) |
+| `shoot-high chat` returns "couldn't find relevant information" even after indexing | `min_similarity` too high (bge-m3 + Chinese rarely exceeds 0.55) | Set `~/.shoothighlm/config.yaml` → `rag.min_similarity: 0.4` AND `rag.fallback_top_n: 3`. Or use `--min-similarity 0.3` per-call. Add `--show-sources` to debug |
+| `shoot-high chat` returns an answer but says "Note: No chunk exceeded min_similarity" | All retrieved chunks were below the threshold | The answer is from the top-N fallback. Lower `min_similarity` to ~0.3 to silence the warning, or accept the fallback as best-effort |
 | `shoot-high index` only stores 1 chunk per PDF | Old bug — only read first page | Fixed. If you still see it, re-run with current code (commit `ee557cc` or later) |
 | Cloud model unreachable | Ollama not signed in, or rate-limited | Run `ollama signin`, or use `--use-local` / set `SHOOTHIGHLM_CHAT=qwen3.5:27b` |
 | `playwright._impl._api_types.TimeoutError` when rendering PNG | Playwright Chromium not installed | `playwright install chromium` (already in install instructions) |
 | Mindmap / flashcard quality is weak on a long book | 12K-char prompt covers <3% of a 1,000-page book | Add `--full` to use 50K chars; ~4x slower but much more complete |
+| `shoot-high synthesize` says "Fish Audio API key not found" | `FISH_AUDIO_API_KEY` not set | See the "TTS: how to set FISH_AUDIO_API_KEY" section above. Set via env var or in `~/.shoothighlm/config.yaml` |
+| `shoot-high synthesize my-script.md` says "Invalid JSON" | Old behavior — synthesize only accepted `.json` | Fixed: now accepts both `.json` and `.md` (the human-readable default). If you have an older version, update with `git pull` |
 | `Could not find matching text` test failures in `tests/test_cli_*.py` | Rich's terminal-width line wrapping on long output paths | Already fixed in current tests; just pull latest |
 
 ## Cloud vs Local — How to Choose
@@ -271,7 +369,7 @@ prompts on M1 Max 64GB).
 
 ✅ **Phase 3 (P2+P3) Complete** — Podcast, TTS, Notebook Guides, and Infographics all shipped!
 
-**Test Coverage:** 302 tests passing, 94.23% coverage ✅
+**Test Coverage:** 318 tests passing, 94.80% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|

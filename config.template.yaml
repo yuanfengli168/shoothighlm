@@ -63,17 +63,26 @@ output:
 
 # RAG settings
 rag:
-  # Chunk size for embedding (bge-m3 max is 8192)
-  chunk_size: 4096
-  
+  # Chunk size for embedding (bge-m3 max is 8192 tokens ≈ 6K Chinese chars)
+  chunk_size: 2000
+
   # Overlap between chunks
   chunk_overlap: 200
-  
+
   # Number of chunks to retrieve for queries
   top_k: 5
-  
-  # Similarity threshold (0-1)
-  min_similarity: 0.7
+
+  # Similarity threshold (0-1).
+  # bge-m3 + Chinese rarely exceeds 0.55 in practice. 0.7 is way too
+  # strict and will silently return "no relevant info" for valid
+  # questions. Recommended: 0.4. Set to 0 to disable threshold filtering
+  # (the RAG will then use top-N results regardless — see fallback_top_n).
+  min_similarity: 0.4
+
+  # When no chunk clears min_similarity, use the top-N results anyway
+  # (default 3). Better to answer from low-similarity chunks than say
+  # "couldn't find anything" when the answer IS in the corpus.
+  fallback_top_n: 3
 
 # Logging
 logging:
