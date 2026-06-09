@@ -221,3 +221,128 @@ The detection uses `_is_cloud_error(exc)` which only matches timeouts, connectio
 
 - Auto-fallback to local on cloud error (would retry once with `chat_local`, then surface the cloud error). User explicitly chose not to do this — they want explicit control.
 - Unit tests for `_is_cloud_error` and `resolve_chat_model` to lift coverage back above 93%.
+
+---
+
+## 2026-06-09 — Add --full flag, model-in-output, restore coverage to 94%, refresh docs
+
+| Field | Value |
+|---|---|
+| **Date** | 2026-06-09 17:24:57 +0800 |
+| **Branch** | `master` |
+| **Commit ID (full)** | `fe8c8b287b76337f9462d81567c3b46d3580c7af` |
+| **Commit ID (short)** | `fe8c8b2` |
+| **Parent** | `2d7dedd` (_"docs: record cloud-primary / local-fallback policy commit"_) |
+| **Author** | `yuanfengli168 <jackieliglobal@gmail.com>` |
+| **Remote** | `https://github.com/yuanfengli168/shoothighlm.git` |
+| **Files changed** | 17 (1,762 insertions, 59 deletions) |
+| **Status** | ✅ 302 tests pass, 1 skipped, coverage 94.23% |
+
+### Commit Message
+
+> Add --full flag, model-in-output, restore coverage to 94%, refresh docs
+>
+> - --full flag on all 6 LLM commands (50K-char prompt vs 12K default)
+> - All 6 generators accept use_full=True and switch to 50K-char mode
+> - Each command prints '(model: X, prompt: 12K|50K chars)' status line
+> - New helpers in cli.py: _is_cloud_error, resolve_chat_model,
+>   _config_get (works on both Config objects and plain dicts)
+> - Bug fix: infographic and tables commands now catch httpx.HTTPError
+>   on the LLM call (was: only ValueError/RuntimeError — would crash
+>   on real network outage)
+
+### Why this commit
+
+The user (Yuanfeng) was doing a Chinese-PDF RAG test pass on a 1,221-page
+book (《道生合符》 by Kazuo Inamori) on his MacBook Pro M1 Max. After
+the previous commit's cloud-fallback policy, the second wave of feedback
+was:
+
+1. Mindmap/flashcard/podcast/guide quality on long books was weak
+   because the 12K-char prompt only covers the first ~30 pages. Add
+   `--full` to opt into 50K.
+2. The user wanted to know which model was active. Add `(model: X)`
+   to every command's status line.
+3. Stale docs across README / CHANGELOG / DECISIONS / ChallengesInChinese.
+4. Coverage dropped from 95% → 90% after the helpers in the previous
+   commit. Restore it to >93%.
+5. While writing the cloud-error tests, I discovered that
+   `infographic()` and `tables()` only caught `ValueError` /
+   `RuntimeError` from the LLM call — a real `httpx.ConnectError` on
+   cloud outage would propagate as a Click exception and crash. Added
+   `httpx.HTTPError` to the catch list. Same fix as the other 4 commands.
+
+### New test files (64 new tests)
+
+| File | Tests | What it covers |
+|---|---|---|
+| `tests/test_cli_helpers.py` | 16 | `resolve_chat_model` priority chain, `_is_cloud_error` |
+| `tests/test_use_full_flag.py` | 14 | `--full` flag propagation, 12K→50K switch |
+| `tests/test_pdf_embedding_edges.py` | 14 | docling fallback, 50% retry on 500, sentence-boundary truncation |
+| `tests/test_cli_cloud_errors.py` | 9 | chat cloud/non-cloud/500 paths |
+| `tests/test_cli_generator_errors.py` | 12 | cloud + generic error paths in all 6 generators |
+
+### Test Results
+
+```
+302 passed, 1 skipped in 7.17s
+Coverage: 94.23% (was 90%)
+Per-file:
+  embedding.py  100%
+  vectorstore.py 100%
+  pdf.py         95%
+  cli.py         85% (large, mostly command-body glue)
+  All generators 96-98%
+```
+
+The 1 skipped test is still `test_embedder_embed_real` (requires
+live Ollama). Gated by `SKIP_LIVE_TESTS=1` in CI.
+
+### Bug fix detail
+
+**Before:**
+```python
+# cli.py — infographic
+try:
+    info = generator.generate(...)
+except (ValueError, RuntimeError) as e:
+    if _is_cloud_error(e): ...  # never reached on httpx.ConnectError
+    else: ...
+```
+
+**After:**
+```python
+try:
+    info = generator.generate(...)
+except (ValueError, RuntimeError, httpx.HTTPError) as e:
+    if _is_cloud_error(e): ...
+    else: ...
+```
+
+Same fix for `tables()`. The other 4 generator commands (mindmap,
+flashcard, podcast, guide) already used `except Exception as e` so
+they were already safe.
+
+### Doc refresh
+
+- **CHANGELOG.md**: New "Index pipeline hardening + cloud-fallback policy" section
+  under `[Unreleased]`. New "Bug fix: CLI exception handlers" note. Test list
+  updated to 302/94.23%.
+- **DECISIONS.md**: New "提示采样策略" (12K vs 50K), "PDF 后端策略" (pypdf vs
+  docling), "测试覆盖" (95% → 89% → 94.23% trajectory) sections in Chinese.
+- **README.md**:
+  - Install instructions: `git clone` + `pip install -e ".[pdf,tts,image,dev]"`
+  - "Pick a model and run" section with `--use-local`, `--model`, env var, `--full`
+  - Troubleshooting table (10 issues, real ones hit during testing)
+  - "Cloud vs Local — How to Choose" section
+  - Fixed the `synthesize` example: podcast defaults to **markdown** for
+    human reading, so users need `--format json` to feed it to `synthesize`
+  - Test count: 238 → 302, coverage: ~90% → 94.23%
+- **Todo.md**: Created (was missing). Living doc of strategies + status.
+  Sections: 1) Smart sampling, 2) Multi-model providers, 3) Shell prompt,
+  4) Stale docs, 5) Coverage. Action items at the bottom.
+- **ChallengesInChinese.md**: Rewrote from empty placeholder. 7 detailed
+  sections on real bugs hit (sqlite-vec "not authorized", docling 10+ hour
+  OCR, bge-m3 500 on Chinese, multi-page bug, 120s timeout, "couldn't find
+  relevant info", exception handler gaps). "共同模式" section with 4
+  patterns for Chinese LLM applications.
