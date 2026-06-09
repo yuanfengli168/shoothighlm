@@ -23,6 +23,12 @@ class VectorStore:
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.conn = sqlite3.connect(str(db_path))
+        # Enable extension loading before calling load(). Newer SQLite
+        # builds (>= 3.13 / SQLite >= 3.41) reject load_extension on
+        # file-backed connections unless enable_load_extension(True) is
+        # called explicitly on the connection. Without this, we get
+        # "sqlite3.OperationalError: not authorized".
+        self.conn.enable_load_extension(True)
         # Load sqlite-vec extension
         sqlite_vec.load(self.conn)
         self._init_db()
