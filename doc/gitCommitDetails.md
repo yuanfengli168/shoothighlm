@@ -346,3 +346,121 @@ they were already safe.
   OCR, bge-m3 500 on Chinese, multi-page bug, 120s timeout, "couldn't find
   relevant info", exception handler gaps). "共同模式" section with 4
   patterns for Chinese LLM applications.
+
+---
+
+## 2026-06-09 — Fix chat 'no relevant info' + synthesize accepts .md
+
+| Field | Value |
+|---|---|
+| **Date** | 2026-06-09 (evening) |
+| **Branch** | `master` |
+| **Commit ID (short)** | `1a03c34` |
+| **Parent** | `0583f95` |
+| **Author** | `yuanfengli168 <jackieliglobal@gmail.com>` |
+| **Files changed** | 10 (833 insertions, 77 deletions) |
+| **Status** | ✅ 318 tests pass, coverage 94.80%; chat verified end-to-end against 1,221-page Chinese book |
+
+### User-reported issues addressed
+
+1. **"I asked '可以总结一下第一章节讲了什么吗?' and got 'couldn't find relevant information'"**
+2. **"How do I set FISH_AUDIO_API_KEY?"**
+3. **"Can you add `--full` examples to each command in README?"**
+4. **"synthesize says Invalid JSON when I pass my .md file"**
+
+### Root cause of #1
+
+With bge-m3 + dense Chinese, observed top-5 chunk similarity is
+0.45–0.55, well below the 0.5 threshold the user had configured.
+So RAG returned nothing even when the answer was clearly in the
+top 5 chunks (chunk #2 actually contained the book's table of
+contents — directly relevant to the question).
+
+### Fix: two-stage retrieval
+
+```python
+# rag.py — RAGChat.build_context()
+above_threshold = [r for r in results if (1 - r.distance) >= self.min_similarity]
+chosen = above_threshold if above_threshold else results[: self.fallback_top_n]
+```
+
+When the fallback is used, the response is prefixed with a
+`[dim]Note: ...[/dim]` line explaining it's best-effort.
+
+### Verified end-to-end
+
+```
+$ shoot-high chat ~/my-books "什么是稻盛和夫的经营哲学?" --min-similarity 0.4
+1. 经营目的：追求全体员工物质和精神两方面的幸福 [1][2]
+2. 核心准则：把作为人应该做的正确的事情以正确的方式贯彻到底
+3. 主要体系：人生·工作的结果 = 思维方式 × 努力 × 能力
+...
+[1] dao-sheng-he-fu.pdf (relevance: 0.71)
+[2] dao-sheng-he-fu.pdf (relevance: 0.70)
+...
+```
+
+A 0.71-relevance Chinese answer with 5 properly cited sources.
+
+### Fix for #4: synthesize accepts .md
+
+New helper `_parse_markdown_script()` in `podcast.py`. Handles
+Chinese, multi-line speaker turns, skips metadata lines like
+`**Duration:**` and `**Hosts:**`. Round-trip test:
+`PodcastScript.to_markdown()` → `_parse_markdown_script()` produces
+the same segments.
+
+### Fix for #2: FISH_AUDIO_API_KEY docs
+
+New section in README.md under "Configuration" with 3 methods:
+- env var (recommended): `export FISH_AUDIO_API_KEY="..."`
+- config file: `tts.api_key: "..."` in `~/.shoothighlm/config.yaml`
+- one-off: prefix the command
+
+Also added a "TTS: how to set FISH_AUDIO_API_KEY" section with
+step-by-step signup instructions for fish.audio.
+
+### Fix for #3: --full examples in README
+
+Added `--full` to all 6 generator commands in the Quick Start:
+- `mindmap --full`
+- `flashcard --full`
+- `podcast --full`
+- `guide --full`
+- `infographic --full`
+- `tables --full`
+
+Plus a comparison table showing 12K (default) vs 50K (`--full`)
+and the ~4× slower trade-off.
+
+### New test files
+
+- `tests/test_chat_flags.py` (4) — `--show-sources`,
+  `--min-similarity`, `fallback_top_n` propagation
+- `tests/test_podcast_parser.py` (7) — Chinese, multi-line,
+  metadata skipping, round-trip
+- `tests/test_synthesize_md.py` (3) — synthesize with .json,
+  with .md, with malformed JSON
+- `tests/test_rag.py` (+2) — fallback_top_n behavior,
+  `_used_fallback` flag
+
+### Test results
+
+```
+318 passed, 1 skipped in 7.23s
+Coverage: 94.80% (was 94.23%)
+  embedding.py  100%
+  vectorstore.py 100%
+  podcast.py     99%
+  rag.py         96%
+  pdf.py         95%
+  cli.py         85%
+```
+
+### User's config
+
+Updated `~/.shoothighlm/config.yaml`:
+- `min_similarity: 0.4` (was 0.5; observed max sim is ~0.48)
+- `fallback_top_n: 3` (new)
+
+Also `config.template.yaml` for new users.
