@@ -18,10 +18,13 @@ import httpx
 import json
 
 
-# Fish Audio S2 reference voices (publicly available preset voices)
-# These are well-known community voices; users can override with their own voice IDs
-DEFAULT_FISH_VOICE_A = "zh_female_shuangkuai"  # Bright female voice
-DEFAULT_FISH_VOICE_B = "zh_male_aojiaobu"        # Warm male voice
+# Fish Audio S2 reference voices.
+# Fish Audio voice IDs are UUIDs of "models" in their catalog (not string names).
+# When None, the API uses its default voice. Users can override with a specific
+# model UUID from their Fish Audio account or from the public catalog at
+# https://fish.audio/discover/ (the model ID is the last part of the URL).
+DEFAULT_FISH_VOICE_A = None  # Use Fish Audio's default voice
+DEFAULT_FISH_VOICE_B = None  # Use Fish Audio's default voice
 
 
 class TTSError(Exception):
@@ -75,11 +78,16 @@ class FishAudioProvider(TTSProvider):
     def synthesize(self, text: str, voice_id: str = None) -> bytes:
         if not text.strip():
             raise TTSError("Cannot synthesize empty text")
-        
+
         voice_id = voice_id or DEFAULT_FISH_VOICE_A
-        
-        # Fish Audio TTS API endpoint
-        # Reference: https://docs.fish.audio/api-reference/operations/create-speech
+
+        # Build request body. Only include reference_id if explicitly set —
+        # sending reference_id=None (or a stale voice name) returns 400.
+        body: dict = {"text": text, "format": "wav"}
+        if voice_id:
+            body["reference_id"] = voice_id
+
+        # Fish Audio TTS API
         try:
             response = self.client.post(
                 "https://api.fish.audio/v1/tts",
@@ -88,12 +96,15 @@ class FishAudioProvider(TTSProvider):
                     "Content-Type": "application/json",
                     "model": "speech-1.6",  # Latest S2 model
                 },
-                json={
-                    "text": text,
-                    "reference_id": voice_id,
-                    "format": "wav",
-                },
+                json=body,
             )
+            if response.status_code == 402:
+                raise TTSError(
+                    "Fish Audio: Insufficient API credit. Your account is "
+                    "authenticated but has no API credit balance. Add funds "
+                    "at https://fish.audio/app/developers, or switch to "
+                    "CosyVoice (set tts.provider: cosyvoice in your config)."
+                )
             response.raise_for_status()
             return response.content
         except httpx.HTTPError as e:
