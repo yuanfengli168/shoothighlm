@@ -158,3 +158,66 @@ For daily use, recommend:
 ```
 
 The skipped test is `test_embedder_embed_real` which requires a live Ollama server (skipped via `SKIP_LIVE_TESTS=1` in CI).
+
+## 2026-06-09 — Cloud-primary, local-fallback policy with --use-local flag
+
+| Field | Value |
+|---|---|
+| **Date** | 2026-06-09 (afternoon) +0800 |
+| **Branch** | `master` |
+| **Commit ID (short)** | `5d9eb84` |
+| **Parent** | `34046b3` |
+| **Files changed** | 1 (`src/shoothighlm/cli.py`, 212 insertions, 97 deletions) |
+| **Status** | ✅ All 238 tests pass |
+
+### Policy
+
+Cloud (`qwen3.5:cloud`) is the **default** chat model. Local (`qwen3.5:27b`) is the **opt-in fallback**, used only when:
+1. The user explicitly passes `--use-local`, OR
+2. The user sets `SHOOTHIGHLM_CHAT=qwen3.5:27b` in the environment, OR
+3. The user edits `~/.shoothighlm/config.yaml` and changes `models.chat`
+
+### Resolution Order (in `cli.py:resolve_chat_model`)
+
+1. `--model <name>` CLI flag — explicit override always wins
+2. `--use-local` CLI flag → uses `models.chat_local`
+3. `SHOOTHIGHLM_CHAT` env var
+4. `models.chat` from config (default: `qwen3.5:cloud`)
+
+### New CLI Flags
+
+All 6 LLM-using commands now accept `--use-local` and `--model`:
+
+```bash
+shoot-high mindmap ~/my-books                          # uses cloud (default)
+shoot-high mindmap ~/my-books --use-local             # uses local
+shoot-high mindmap ~/my-books --model glm-5.1:cloud   # uses custom cloud model
+SHOOTHIGHLM_CHAT=qwen3.5:27b shoot-high mindmap ~/my-books  # uses local via env
+```
+
+### Error Handling
+
+When the cloud LLM is unreachable (timeout, 5xx, connection error), each command prints:
+
+```
+✗ Cloud LLM error: <error message>
+Tip: Cloud LLM is unreachable. To switch to the local model:
+  - run with --use-local (e.g. shoot-high mindmap ~/my-books --use-local), or
+  - set SHOOTHIGHLM_CHAT=qwen3.5:27b in the environment, or
+  - edit ~/.shoothighlm/config.yaml and set models.chat: qwen3.5:27b.
+```
+
+The detection uses `_is_cloud_error(exc)` which only matches timeouts, connection errors, and 5xx — not normal LLM parsing errors. So if the cloud returns bad JSON, you get the real error, not a misleading fallback hint.
+
+### User Config Changes
+
+`~/.shoothighlm/config.yaml` flipped from `qwen3.5:27b` (my earlier speed experiment) back to `qwen3.5:cloud` per this policy. `chat_local: qwen3.5:27b` is preserved as the fallback.
+
+### Test Results
+
+238 passed, 1 skipped. The skipped test is `test_embedder_embed_real` which requires a live Ollama server.
+
+### What I Would Add Next (out of scope for this commit)
+
+- Auto-fallback to local on cloud error (would retry once with `chat_local`, then surface the cloud error). User explicitly chose not to do this — they want explicit control.
+- Unit tests for `_is_cloud_error` and `resolve_chat_model` to lift coverage back above 93%.
