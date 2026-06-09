@@ -54,11 +54,45 @@ Google NotebookLM is powerful, but it's:
 
 > ✅ Phases 1-3 complete — RAG chat, mind maps, flashcards, podcast, TTS, notebook guides all working!
 
-```bash
-# Install
-pip install shoothighlm
+### Install (development mode)
 
-# Initialize a notebook
+The package isn't on PyPI yet. Install from a local clone:
+
+```bash
+git clone https://github.com/yuanfengli168/shoothighlm.git
+cd shoothighlm
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[pdf,tts,image,dev]"
+playwright install chromium   # only if you want --png for infographics
+```
+
+### Pick a model and run
+
+The default chat model is **`qwen3.5:cloud`** (Ollama Cloud — most
+powerful, requires `ollama signin`). Override per-command or globally:
+
+```bash
+# Default: cloud
+shoot-high mindmap ~/my-books
+
+# Switch to local
+shoot-high mindmap ~/my-books --use-local
+
+# Pick a specific model
+shoot-high mindmap ~/my-books --model minimax-m3:cloud
+shoot-high mindmap ~/my-books --model qwen3.5:27b
+
+# Or set globally for the session
+SHOOTHIGHLM_CHAT=qwen3.5:27b shoot-high mindmap ~/my-books
+```
+
+**Use `--full` for higher quality on large books** (50K-char prompt
+vs 12K default — slower but covers more of the source).
+
+### Initialize a notebook
+
+```bash
 shoot-high init ./my-books
 
 # Add PDFs
@@ -93,10 +127,11 @@ shoot-high guide ./my-books --questions 8
 # Export guide as JSON
 shoot-high guide ./my-books --format json
 
-# Generate podcast script
+# Generate podcast script (defaults to Markdown for human reading)
 shoot-high podcast ./my-books
 
-# Synthesize audio from the script (requires FISH_AUDIO_API_KEY)
+# To synthesize audio, generate the script as JSON first
+shoot-high podcast ./my-books --format json
 shoot-high synthesize ./my-books/output/book1-podcast.json
 
 # Generate an infographic (HTML by default)
@@ -194,6 +229,37 @@ Benchmark and rank LLMs on book-reading ability — long document understanding,
 
 See [ranking-board.md](ranking-board.md) for the vision.
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `pip install shoothighlm` fails | Not on PyPI yet | Use `pip install -e ".[pdf,tts,image,dev]"` from a local clone (see Quick Start) |
+| `sqlite3.OperationalError: not authorized` on `shoot-high index` | Python 3.13 + new SQLite needs explicit `enable_load_extension` | Already auto-fixed in current code. If you see it, update with `git pull` |
+| `shoot-high mindmap` hangs 10+ min on a long PDF | Default backend was docling OCR (slow) | Already changed to `pypdf` by default. Override with `SHOOTHIGHLM_PDF_BACKEND=docling` only for scanned PDFs |
+| `httpx.ReadTimeout: timed out` after 120s | Cloud model + thinking mode + long prompt = 50-100s+ | All LLM clients now use 600s timeout. If you still see this, check `ollama ps` — your model may be stuck loading |
+| `500 Internal Server Error: the input length exceeds the context length` | bge-m3 has 8K-token limit; dense Chinese overflows | Embedder now auto-truncates to 6K chars with sentence-boundary cut. Your `chunk_size` config is capped to 2000 chars by default |
+| `shoot-high chat` returns "couldn't find relevant information" even after indexing | `min_similarity` too high (0.7 was default) | Set `~/.shoothighlm/config.yaml` → `rag.min_similarity: 0.5` (bge-m3 + Chinese rarely exceeds 0.65) |
+| `shoot-high index` only stores 1 chunk per PDF | Old bug — only read first page | Fixed. If you still see it, re-run with current code (commit `ee557cc` or later) |
+| Cloud model unreachable | Ollama not signed in, or rate-limited | Run `ollama signin`, or use `--use-local` / set `SHOOTHIGHLM_CHAT=qwen3.5:27b` |
+| `playwright._impl._api_types.TimeoutError` when rendering PNG | Playwright Chromium not installed | `playwright install chromium` (already in install instructions) |
+| Mindmap / flashcard quality is weak on a long book | 12K-char prompt covers <3% of a 1,000-page book | Add `--full` to use 50K chars; ~4x slower but much more complete |
+| `Could not find matching text` test failures in `tests/test_cli_*.py` | Rich's terminal-width line wrapping on long output paths | Already fixed in current tests; just pull latest |
+
+## Cloud vs Local — How to Choose
+
+The default is **cloud** (`qwen3.5:cloud`). Switch to local with `--use-local`
+or `--model qwen3.5:27b` when:
+
+- You want to work offline
+- You have sensitive documents (data never leaves your machine)
+- You want lower latency for repeated calls
+- Your cloud quota is exhausted
+
+Cloud is faster and higher quality for first-token time on small prompts
+(50-100s including cold start). Local 27B is faster for warm sequential
+calls but slower per call (~30s for warm 12K prompts, ~10min for 50K
+prompts on M1 Max 64GB).
+
 ## Documentation
 
 - [DECISIONS.md](DECISIONS.md) — All project decisions, tech choices, limits
@@ -205,7 +271,7 @@ See [ranking-board.md](ranking-board.md) for the vision.
 
 ✅ **Phase 3 (P2+P3) Complete** — Podcast, TTS, Notebook Guides, and Infographics all shipped!
 
-**Test Coverage:** 239 tests passing, 95% coverage ✅
+**Test Coverage:** 302 tests passing, 94.23% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|

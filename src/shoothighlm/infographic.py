@@ -181,19 +181,22 @@ class InfographicGenerator:
         template: str = "summary_card",
         title: str = "Document",
         sources: Optional[List[str]] = None,
+        use_full: bool = False,
     ) -> Infographic:
         """
         Generate an infographic from text.
-        
+
         Args:
             text: Source text (PDF content)
             template: One of TEMPLATES keys
             title: Infographic title
             sources: Source document names for attribution
-        
+            use_full: If True, use a larger prompt (50K chars) for
+                higher-fidelity generation on large documents.
+
         Returns:
             Infographic object with html_content populated
-        
+
         Raises:
             ValueError: If template is unknown
             RuntimeError: If LLM call fails
@@ -203,12 +206,13 @@ class InfographicGenerator:
                 f"Unknown template: {template}. "
                 f"Choose from: {', '.join(TEMPLATES.keys())}"
             )
-        
-        # Truncate long text
-        max_chars = 12000  # was 30000-50000; smaller = faster
+
+        # Truncate long text. Default 12K chars keeps generation fast;
+        # --full uses 50K for higher quality.
+        max_chars = 50000 if use_full else 12000
         if len(text) > max_chars:
             text = text[:max_chars] + "... [truncated]"
-        
+
         data = self._extract_data(text, template, title)
         if sources:
             data["sources"] = sources

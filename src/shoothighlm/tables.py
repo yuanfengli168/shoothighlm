@@ -134,25 +134,29 @@ class TableExtractor:
         text: str,
         max_tables: int = 3,
         source: str = "",
+        use_full: bool = False,
     ) -> List[DataTable]:
         """Extract up to `max_tables` data tables from text.
-        
+
         Args:
             text: Source text (PDF content)
             max_tables: Maximum number of tables to return
             source: Source document name for attribution
-        
+            use_full: If True, use a larger prompt (50K chars) for
+                higher-fidelity extraction on large documents.
+
         Returns:
             List of DataTable objects (may be empty)
-        
+
         Raises:
             RuntimeError: If LLM call fails or returns invalid JSON
         """
         if not text or not text.strip():
             return []
-        
-        # Truncate very long text
-        max_chars = 12000  # was 30000-50000; smaller = faster
+
+        # Truncate very long text. Default 12K chars keeps extraction
+        # fast; --full uses 50K to cover more of the source.
+        max_chars = 50000 if use_full else 12000
         if len(text) > max_chars:
             text = text[:max_chars] + "... [truncated]"
         

@@ -41,16 +41,42 @@ def resolve_chat_model(config, use_local: bool, model_override: str | None) -> s
     2. --use-local flag → use models.chat_local
     3. SHOOTHIGHLM_CHAT env var
     4. models.chat from config (default: qwen3.5:cloud)
+
+    `config` may be a `Config` instance (production) or a plain `dict`
+    (tests). We handle both.
     """
     import os
     if model_override:
         return model_override
     if use_local:
-        return config.get("models", "chat_local", default="qwen3.5:27b")
+        return _config_get(config, "models", "chat_local", default="qwen3.5:27b")
     env_model = os.environ.get("SHOOTHIGHLM_CHAT")
     if env_model:
         return env_model
-    return config.get("models", "chat", default="qwen3.5:cloud")
+    return _config_get(config, "models", "chat", default="qwen3.5:cloud")
+
+
+def _config_get(config, *keys: str, default=None):
+    """Look up nested keys in either a Config object or a plain dict.
+
+    Returns `default` if any key is missing.
+    """
+    value = config
+    for key in keys:
+        if isinstance(value, dict):
+            if key in value:
+                value = value[key]
+            else:
+                return default
+        else:
+            # Config object has its own .get() with *keys + default
+            if hasattr(value, "get"):
+                value = value.get(key)
+            else:
+                return default
+        if value is None:
+            return default
+    return value
 
 
 @click.group()
@@ -239,7 +265,8 @@ def chat(notebook: str, question: tuple[str], model: str, use_local: bool):
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
-def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool):
+@click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity mind maps on large books")
+def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool, use_full: bool):
     """Generate mind map from PDFs"""
     from .config import Config
     from .pdf import parse_pdf
@@ -272,9 +299,9 @@ def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool):
             return
 
         rprint(f"  Extracted {len(all_text):,} chars")
-        rprint(f"[dim]Extracting mind map with model {chat_model}...[/dim]")
+        rprint(f"[dim]Extracting mind map with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
         try:
-            mindmap_tree = extractor.extract(all_text, title=pdf.stem)
+            mindmap_tree = extractor.extract(all_text, title=pdf.stem, use_full=use_full)
         except Exception as e:
             if _is_cloud_error(e):
                 rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
@@ -340,7 +367,8 @@ def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool):
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
-def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_local: bool):
+@click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity flashcard generation")
+def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_local: bool, use_full: bool):
     """Generate flashcards from PDFs"""
     from .config import Config
     from .pdf import parse_pdf
@@ -372,9 +400,9 @@ def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_lo
             rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
             return
 
-        rprint(f"[dim]Generating {num} flashcards with model {chat_model}...[/dim]")
+        rprint(f"[dim]Generating {num} flashcards with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
         try:
-            cards = generator.generate(all_text, num_cards=num, source=pdf.name)
+            cards = generator.generate(all_text, num_cards=num, source=pdf.name, use_full=use_full)
         except Exception as e:
             if _is_cloud_error(e):
                 rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
@@ -429,7 +457,8 @@ def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_lo
 @click.option("--host-b", default="Jamie", help="Host B name")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
-def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, host_b: str, model: str, use_local: bool):
+@click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity podcast scripts")
+def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, host_b: str, model: str, use_local: bool, use_full: bool):
     """Generate podcast from PDFs"""
     from .config import Config
     from .pdf import parse_pdf
@@ -465,9 +494,9 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, ho
             rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
             return
 
-        rprint(f"[dim]Generating {duration}-minute podcast script with model {chat_model}...[/dim]")
+        rprint(f"[dim]Generating {duration}-minute podcast script with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
         try:
-            script = generator.generate(all_text, title=pdf.stem, duration_minutes=duration)
+            script = generator.generate(all_text, title=pdf.stem, duration_minutes=duration, use_full=use_full)
         except Exception as e:
             if _is_cloud_error(e):
                 rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
@@ -579,7 +608,8 @@ def synthesize(
 @click.option("--questions", "-q", default=5, help="Number of suggested questions")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
-def guide(notebook: str, fmt: str, output: str, questions: int, model: str, use_local: bool):
+@click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity guide generation")
+def guide(notebook: str, fmt: str, output: str, questions: int, model: str, use_local: bool, use_full: bool):
     """Generate notebook guide (summary, key topics, suggested questions)"""
     from .config import Config
     from .pdf import parse_pdf
@@ -617,13 +647,14 @@ def guide(notebook: str, fmt: str, output: str, questions: int, model: str, use_
             rprint("[red]No text extracted from any PDFs[/red]")
             return
 
-        rprint(f"[dim]Generating guide with {questions} suggested questions (model: {chat_model})...[/dim]")
+        rprint(f"[dim]Generating guide with {questions} suggested questions (model: {chat_model}, prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
         try:
             notebook_guide = generator.generate(
                 all_text,
                 title=notebook_path.name,
                 sources=sources,
                 num_questions=questions,
+                use_full=use_full,
             )
         except Exception as e:
             if _is_cloud_error(e):
@@ -668,7 +699,8 @@ def guide(notebook: str, fmt: str, output: str, questions: int, model: str, use_
 @click.option("--height", default=1600, help="PNG viewport height")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
-def infographic(notebook: str, template: str, output: str, to_png: bool, width: int, height: int, model: str, use_local: bool):
+@click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity infographic generation")
+def infographic(notebook: str, template: str, output: str, to_png: bool, width: int, height: int, model: str, use_local: bool, use_full: bool):
     """Generate an infographic from PDFs (HTML + optional PNG)"""
     from .config import Config
     from .pdf import parse_pdf
@@ -706,15 +738,16 @@ def infographic(notebook: str, template: str, output: str, to_png: bool, width: 
             rprint("[red]No text extracted from any PDFs[/red]")
             return
 
-        rprint(f"[dim]Generating {template} infographic with model {chat_model}...[/dim]")
+        rprint(f"[dim]Generating {template} infographic with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
         try:
             info = generator.generate(
                 all_text,
                 template=template,
                 title=notebook_path.name,
                 sources=sources,
+                use_full=use_full,
             )
-        except (ValueError, RuntimeError) as e:
+        except (ValueError, RuntimeError, httpx.HTTPError) as e:
             # RuntimeError from the LLM call may be a cloud error
             if _is_cloud_error(e):
                 rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
@@ -766,7 +799,8 @@ def infographic(notebook: str, template: str, output: str, to_png: bool, width: 
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
-def tables(notebook: str, max_tables: int, fmt: str, output: str, model: str, use_local: bool):
+@click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity table extraction")
+def tables(notebook: str, max_tables: int, fmt: str, output: str, model: str, use_local: bool, use_full: bool):
     """Extract data tables from PDFs (comparisons, statistics, lists, timelines)"""
     from .config import Config
     from .pdf import parse_pdf
@@ -797,10 +831,10 @@ def tables(notebook: str, max_tables: int, fmt: str, output: str, model: str, us
                 rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
                 continue
 
-            rprint(f"[dim]Extracting up to {max_tables} tables (model: {chat_model})...[/dim]")
+            rprint(f"[dim]Extracting up to {max_tables} tables (model: {chat_model}, prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
             try:
-                tables_found = extractor.extract(all_text, max_tables=max_tables, source=pdf.name)
-            except RuntimeError as e:
+                tables_found = extractor.extract(all_text, max_tables=max_tables, source=pdf.name, use_full=use_full)
+            except (RuntimeError, httpx.HTTPError) as e:
                 if _is_cloud_error(e):
                     rprint(f"[red]✗ Cloud LLM error for {pdf.name}:[/red] {e}")
                     rprint(_OLLAMA_CLOUD_HINT)

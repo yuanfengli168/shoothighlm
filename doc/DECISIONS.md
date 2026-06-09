@@ -180,3 +180,112 @@ Drop PDFs in a folder, run commands, get output files.
 - [ ] 各模型实际token消耗与用量统计
 - [ ] 单文件50MB / 总500MB 压力测试
 - [ ] Fish Audio S2 真实端到端测试（需 API key）
+## 云端优先、本地兜底策略（Cloud-Primary, Local-Fallback）
+
+> 更新于 2026-06-09（伴随 commit `5d9eb84`）
+
+**规则：云端是默认 chat 模型；本地是用户显式 opt-in 的兜底。**
+
+### 模型解析顺序（`cli.py:resolve_chat_model`）
+
+1. `--model <name>` CLI 标志（用户显式覆盖，永远赢）
+2. `--use-local` CLI 标志 → 使用 `models.chat_local`
+3. `SHOOTHIGHLM_CHAT` 环境变量
+4. 配置文件中的 `models.chat`（默认：`qwen3.5:cloud`）
+
+### 用户切换到本地的 3 种方式
+
+```bash
+# 1. 一次性（仅本次命令）
+shoot-high mindmap ~/my-books --use-local
+
+# 2. 一次性（任意模型名）
+shoot-high mindmap ~/my-books --model qwen3.5:27b
+shoot-high mindmap ~/my-books --model minimax-m3:cloud
+
+# 3. 整个会话
+SHOOTHIGHLM_CHAT=qwen3.5:27b shoot-high mindmap ~/my-books
+```
+
+### 为什么不自动 fallback
+
+我们**故意不做**自动 fallback 到本地的原因：
+
+- **可见性**：用户应该明确知道正在使用哪个模型（影响成本、质量、隐私）
+- **成本意识**：云端按 token 计费；自动 fallback 可能让用户意外消耗
+- **隐私**：本地 = 数据不出机器；云端 = 数据发到 Ollama 服务器
+- **质量预期**：qwen3.5:cloud > qwen3.5:27b（cloud 是前沿模型）
+
+### 错误处理
+
+云端不可达时（超时 / 5xx / 连接错误），命令打印：
+
+```
+✗ Cloud LLM error: <错误信息>
+Tip: Cloud LLM is unreachable. To switch to the local model:
+  - run with --use-local
+  - set SHOOTHIGHLM_CHAT=<model>
+  - edit ~/.shoothighlm/config.yaml
+```
+
+`_is_cloud_error(exc)` 只匹配超时、连接错误、5xx HTTP——**不会**把正常的 LLM 解析错误（JSON 格式不对等）误报为云端故障，避免误导用户。
+
+## 提示采样策略
+
+> **状态**：当前是 `text[:12000]`（粗暴取前 12K），**计划改进**为分层采样
+
+### 现状
+
+所有 6 个 LLM-using 模块（mindmap / flashcard / podcast / guide / infographic / tables）默认 `max_chars = 12000`。对一本 1,200 页的书，这意味着：
+
+- 只看了**前 30-40 页**
+- 主要覆盖：扉页、版权页、目录
+- 错过：结论、跨章节论证、6 本合集中的后 5 本
+
+### `--full` 标志（已实现）
+
+所有 6 个命令加上了 `--full`，使用 50K 字符（约 12-15K tokens）：
+
+```bash
+shoot-high mindmap ~/my-books --full    # 4x 慢，但覆盖更多
+```
+
+适合：精读、对质量要求高的场景。默认 `12K` 适合：日常探索、速度优先。
+
+### 计划改进（见 `doc/Todo.md` §1）
+
+- **分层采样**：从开头 / 中间 / 结尾各取 4K → 覆盖整本书
+- **基于 embedding 的多样性采样**：从 sqlite-vec 选 top-N chunks（按与全书中心向量的距离）
+- **层级摘要**：chunk → 摘要 → 摘要的摘要（保真度最高，最慢）
+
+## PDF 后端策略
+
+> **状态**：默认 `pypdf`（快速文本层），可通过 `SHOOTHIGHLM_PDF_BACKEND=docling` 切换到 OCR
+
+### 决策变化（2026-06-09）
+
+之前默认 `docling`（OCR + RapidOCR + PyTorch），在 1,221 页的《道生合符》上需要 10+ 小时。改成 `pypdf` 后：
+
+- 文本层 PDF（大多数电子书）：**秒级**完成
+- 扫描 PDF（无文本层）：pypdf 提取 0 字符 → 需要 `docling`
+
+### 用户切换
+
+```bash
+# 默认（快，但需要 PDF 有文本层）
+shoot-high index ~/my-books
+
+# 扫描 / 影印版 PDF
+SHOOTHIGHLM_PDF_BACKEND=docling shoot-high index ~/my-books
+```
+
+## 测试覆盖
+
+| 时点 | 覆盖率 | 备注 |
+|---|---|---|
+| 2026-06-07 (Phase 3 完) | 95% | 239 tests |
+| 2026-06-09 (新增 `--use-local`/`--model` 后) | 89% | 新增 2 个 helper 未直接测试 |
+| 2026-06-09 (helper 单元测试 + 边界覆盖后) | **94.23%** ✅ | 302 tests，覆盖 5 个新文件、64 个新测试 |
+
+`test_cli_helpers.py`、`test_use_full_flag.py`、`test_pdf_embedding_edges.py`、
+`test_cli_cloud_errors.py`、`test_cli_generator_errors.py` 共 64 个新测试。

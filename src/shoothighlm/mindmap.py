@@ -74,19 +74,23 @@ class MindMapExtractor:
         # 50K-char prompts.
         self.client = httpx.Client(timeout=600.0)
     
-    def extract(self, text: str, title: str = "Document") -> MindMapNode:
+    def extract(self, text: str, title: str = "Document", use_full: bool = False) -> MindMapNode:
         """
         Extract mind map structure from text.
-        
+
         Args:
             text: Text content to analyze
             title: Title for the root node
-        
+            use_full: If True, use a larger prompt (50K chars instead of
+                the 12K default) for higher-fidelity mind maps of large
+                documents. Slower; costs more tokens.
+
         Returns:
             MindMapNode tree structure
         """
         # Truncate if too long (keep under model context limit)
-        max_chars = 12000  # was 30000-50000; smaller = faster
+        # Default 12K = ~3-4K tokens; --full uses 50K = ~12-15K tokens
+        max_chars = 50000 if use_full else 12000
         if len(text) > max_chars:
             text = text[:max_chars] + "... [truncated]"
         

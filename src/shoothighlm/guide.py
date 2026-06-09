@@ -88,23 +88,27 @@ class GuideGenerator:
         title: str = "Notebook Guide",
         sources: List[str] = None,
         num_questions: int = 5,
+        use_full: bool = False,
     ) -> NotebookGuide:
         """
         Generate a notebook guide from text.
-        
+
         Args:
             text: Combined text from all documents in the notebook
             title: Title for the guide (usually notebook name)
             sources: List of source document names
             num_questions: Number of suggested questions to generate
-        
+            use_full: If True, use a larger prompt (50K chars) for
+                higher-fidelity generation on large documents.
+
         Returns:
             NotebookGuide object
         """
         sources = sources or []
-        
-        # Truncate if too long — guides work best with condensed text
-        max_chars = 12000  # was 30000-50000; smaller = faster
+
+        # Truncate if too long — guides work best with condensed text.
+        # Default 12K chars keeps generation fast; --full uses 50K.
+        max_chars = 50000 if use_full else 12000
         if len(text) > max_chars:
             text = text[:max_chars] + "... [truncated]"
         
