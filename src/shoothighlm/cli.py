@@ -4,10 +4,53 @@ shootHighLM CLI — Chinese-first, multi-LLM CLI alternative to Google NotebookL
 
 import json
 import click
+import httpx
 from rich import print as rprint
 from pathlib import Path
 from . import __version__
 from .config import init_config, Config
+
+
+# Hint shown when the cloud LLM fails — guides the user to the local
+# fallback. The local model is more powerful by default (qwen3.5:cloud);
+# users opt in to local only when cloud is unreachable.
+_OLLAMA_CLOUD_HINT = (
+    "[yellow]Tip:[/yellow] Cloud LLM is unreachable. To switch to the local model:\n"
+    "  - run with [bold]--use-local[/bold] (e.g. [bold]shoot-high mindmap ~/my-books --use-local[/bold]), or\n"
+    "  - set [bold]SHOOTHIGHLM_CHAT=qwen3.5:27b[/bold] in the environment, or\n"
+    "  - edit [bold]~/.shoothighlm/config.yaml[/bold] and set [bold]models.chat: qwen3.5:27b[/bold]."
+)
+
+
+def _is_cloud_error(exc: Exception) -> bool:
+    """Return True if an exception looks like a cloud LLM failure
+    (timeout, connection error, or 5xx HTTP status). Used to decide
+    whether to print the local-fallback hint.
+    """
+    if isinstance(exc, (httpx.ReadTimeout, httpx.ConnectError, httpx.ConnectTimeout)):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    return False
+
+
+def resolve_chat_model(config, use_local: bool, model_override: str | None) -> str:
+    """Pick which chat model to use, in this priority order:
+
+    1. --model CLI override (explicit user choice wins)
+    2. --use-local flag → use models.chat_local
+    3. SHOOTHIGHLM_CHAT env var
+    4. models.chat from config (default: qwen3.5:cloud)
+    """
+    import os
+    if model_override:
+        return model_override
+    if use_local:
+        return config.get("models", "chat_local", default="qwen3.5:27b")
+    env_model = os.environ.get("SHOOTHIGHLM_CHAT")
+    if env_model:
+        return env_model
+    return config.get("models", "chat", default="qwen3.5:cloud")
 
 
 @click.group()
@@ -116,27 +159,28 @@ def index(notebook: str):
 @click.argument("notebook", type=click.Path(exists=True))
 @click.argument("question", nargs=-1)
 @click.option("--model", "model", default=None, help="Override chat model")
-def chat(notebook: str, question: tuple[str], model: str):
+@click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
+def chat(notebook: str, question: tuple[str], model: str, use_local: bool):
     """Chat with your PDFs"""
     from .config import Config
     from .embedding import get_embedder
     from .vectorstore import VectorStore
     from .rag import RAGChat
-    
+
     config = Config()
     notebook_path = Path(notebook)
-    
+
     # Check for indexed database
     db_path = notebook_path / ".shoothighlm" / "vectors.db"
     if not db_path.exists():
         rprint("[red]No index found. Run 'shoot-high index' first.[/red]")
         return
-    
+
     # Initialize components
     store = VectorStore(db_path)
     embedder = get_embedder(model=config.get("models", "embedding", default="bge-m3"))
-    chat_model = model or config.get("models", "chat", default="qwen3.5:cloud")
-    
+    chat_model = resolve_chat_model(config, use_local, model)
+
     rag = RAGChat(
         vectorstore=store,
         embedder=embedder,
@@ -144,18 +188,26 @@ def chat(notebook: str, question: tuple[str], model: str):
         top_k=config.get("rag", "top_k", default=5),
         min_similarity=config.get("rag", "min_similarity", default=0.7),
     )
-    
+
     try:
         if question:
             # Single question mode
             query = " ".join(question)
             rprint(f"[bold]Q:[/bold] {query}")
             rprint("[dim]Thinking...[/dim]")
-            response = rag.chat(query)
+            try:
+                response = rag.chat(query)
+            except Exception as e:
+                if _is_cloud_error(e):
+                    rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                    rprint(_OLLAMA_CLOUD_HINT)
+                else:
+                    rprint(f"[red]✗ Chat failed:[/red] {e}")
+                return
             rprint(f"[green]A:[/green] {response.answer}")
         else:
             # Interactive mode
-            rprint("[green]Chat mode. Type 'quit' to exit.[/green]")
+            rprint(f"[green]Chat mode (model: {chat_model}). Type 'quit' to exit.[/green]")
             while True:
                 try:
                     query = click.prompt(click.style("Q", bold=True, fg="green"), prompt_suffix="> ")
@@ -166,7 +218,15 @@ def chat(notebook: str, question: tuple[str], model: str):
                 if not query.strip():
                     continue
                 rprint("[dim]Thinking...[/dim]")
-                response = rag.chat(query)
+                try:
+                    response = rag.chat(query)
+                except Exception as e:
+                    if _is_cloud_error(e):
+                        rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                        rprint(_OLLAMA_CLOUD_HINT)
+                        return
+                    rprint(f"[red]✗ Chat failed:[/red] {e}")
+                    continue
                 rprint(f"[green]A:[/green] {response.answer}")
     finally:
         rag.close()
@@ -177,28 +237,29 @@ def chat(notebook: str, question: tuple[str], model: str):
 @click.argument("notebook", type=click.Path(exists=True))
 @click.option("--format", "fmt", type=click.Choice(["markdown", "opml", "html", "json"]), default="markdown")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
-def mindmap(notebook: str, fmt: str, output: str):
+@click.option("--model", "model", default=None, help="Override chat model")
+@click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
+def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool):
     """Generate mind map from PDFs"""
     from .config import Config
     from .pdf import parse_pdf
     from .mindmap import MindMapExtractor
-    
+
     config = Config()
     notebook_path = Path(notebook)
-    
+
     # Find PDFs
     pdfs = list(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
-    
+
     rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
-    
-    # Initialize extractor
-    extractor = MindMapExtractor(
-        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
-    )
-    
+
+    # Initialize extractor (cloud by default; --use-local to opt out)
+    chat_model = resolve_chat_model(config, use_local, model)
+    extractor = MindMapExtractor(chat_model=chat_model)
+
     try:
         # Process first PDF (for now)
         pdf = pdfs[0]
@@ -211,8 +272,16 @@ def mindmap(notebook: str, fmt: str, output: str):
             return
 
         rprint(f"  Extracted {len(all_text):,} chars")
-        rprint("[dim]Extracting mind map...[/dim]")
-        mindmap_tree = extractor.extract(all_text, title=pdf.stem)
+        rprint(f"[dim]Extracting mind map with model {chat_model}...[/dim]")
+        try:
+            mindmap_tree = extractor.extract(all_text, title=pdf.stem)
+        except Exception as e:
+            if _is_cloud_error(e):
+                rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                rprint(_OLLAMA_CLOUD_HINT)
+            else:
+                rprint(f"[red]✗ Mind map generation failed:[/red] {e}")
+            return
         
         # Export based on format
         if fmt == "markdown":
@@ -269,28 +338,29 @@ def mindmap(notebook: str, fmt: str, output: str):
 @click.option("--num", "-n", default=10, help="Number of flashcards to generate")
 @click.option("--format", "fmt", type=click.Choice(["markdown", "csv", "json"]), default="markdown")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
-def flashcard(notebook: str, num: int, fmt: str, output: str):
+@click.option("--model", "model", default=None, help="Override chat model")
+@click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
+def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_local: bool):
     """Generate flashcards from PDFs"""
     from .config import Config
     from .pdf import parse_pdf
     from .flashcard import FlashcardGenerator
-    
+
     config = Config()
     notebook_path = Path(notebook)
-    
+
     # Find PDFs
     pdfs = list(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
-    
+
     rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
-    
-    # Initialize generator
-    generator = FlashcardGenerator(
-        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
-    )
-    
+
+    # Initialize generator (cloud by default; --use-local to opt out)
+    chat_model = resolve_chat_model(config, use_local, model)
+    generator = FlashcardGenerator(chat_model=chat_model)
+
     try:
         # Process first PDF (for now)
         pdf = pdfs[0]
@@ -302,13 +372,21 @@ def flashcard(notebook: str, num: int, fmt: str, output: str):
             rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
             return
 
-        rprint(f"[dim]Generating {num} flashcards...[/dim]")
-        cards = generator.generate(all_text, num_cards=num, source=pdf.name)
-        
+        rprint(f"[dim]Generating {num} flashcards with model {chat_model}...[/dim]")
+        try:
+            cards = generator.generate(all_text, num_cards=num, source=pdf.name)
+        except Exception as e:
+            if _is_cloud_error(e):
+                rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                rprint(_OLLAMA_CLOUD_HINT)
+            else:
+                rprint(f"[red]✗ Flashcard generation failed:[/red] {e}")
+            return
+
         if not cards:
             rprint("[yellow]⚠ No flashcards generated[/yellow]")
             return
-        
+
         rprint(f"[green]✓ Generated {len(cards)} flashcards[/green]")
         
         # Export based on format
@@ -349,30 +427,33 @@ def flashcard(notebook: str, num: int, fmt: str, output: str):
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
 @click.option("--host-a", default="Alex", help="Host A name")
 @click.option("--host-b", default="Jamie", help="Host B name")
-def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, host_b: str):
+@click.option("--model", "model", default=None, help="Override chat model")
+@click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
+def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, host_b: str, model: str, use_local: bool):
     """Generate podcast from PDFs"""
     from .config import Config
     from .pdf import parse_pdf
     from .podcast import PodcastGenerator
-    
+
     config = Config()
     notebook_path = Path(notebook)
-    
+
     # Find PDFs
     pdfs = list(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
-    
+
     rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
-    
-    # Initialize generator
+
+    # Initialize generator (cloud by default; --use-local to opt out)
+    chat_model = resolve_chat_model(config, use_local, model)
     generator = PodcastGenerator(
-        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
+        chat_model=chat_model,
         host_a_name=host_a,
         host_b_name=host_b,
     )
-    
+
     try:
         # Process first PDF (for now)
         pdf = pdfs[0]
@@ -384,9 +465,17 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, ho
             rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
             return
 
-        rprint(f"[dim]Generating {duration}-minute podcast script...[/dim]")
-        script = generator.generate(all_text, title=pdf.stem, duration_minutes=duration)
-        
+        rprint(f"[dim]Generating {duration}-minute podcast script with model {chat_model}...[/dim]")
+        try:
+            script = generator.generate(all_text, title=pdf.stem, duration_minutes=duration)
+        except Exception as e:
+            if _is_cloud_error(e):
+                rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                rprint(_OLLAMA_CLOUD_HINT)
+            else:
+                rprint(f"[red]✗ Podcast generation failed:[/red] {e}")
+            return
+
         rprint(f"[green]✓ Generated {len(script.segments)} dialogue segments[/green]")
         
         # Export based on format
@@ -488,28 +577,29 @@ def synthesize(
 @click.option("--format", "fmt", type=click.Choice(["markdown", "json"]), default="markdown")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
 @click.option("--questions", "-q", default=5, help="Number of suggested questions")
-def guide(notebook: str, fmt: str, output: str, questions: int):
+@click.option("--model", "model", default=None, help="Override chat model")
+@click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
+def guide(notebook: str, fmt: str, output: str, questions: int, model: str, use_local: bool):
     """Generate notebook guide (summary, key topics, suggested questions)"""
     from .config import Config
     from .pdf import parse_pdf
     from .guide import GuideGenerator
-    
+
     config = Config()
     notebook_path = Path(notebook)
-    
+
     # Find PDFs
     pdfs = list(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
-    
+
     rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
-    
-    # Initialize generator
-    generator = GuideGenerator(
-        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
-    )
-    
+
+    # Initialize generator (cloud by default; --use-local to opt out)
+    chat_model = resolve_chat_model(config, use_local, model)
+    generator = GuideGenerator(chat_model=chat_model)
+
     try:
         # Combine text from all PDFs (guides work on the whole notebook)
         all_text = ""
@@ -522,18 +612,26 @@ def guide(notebook: str, fmt: str, output: str, questions: int):
                 sources.append(pdf.name)
             else:
                 rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
-        
+
         if not all_text.strip():
             rprint("[red]No text extracted from any PDFs[/red]")
             return
-        
-        rprint(f"[dim]Generating guide with {questions} suggested questions...[/dim]")
-        notebook_guide = generator.generate(
-            all_text,
-            title=notebook_path.name,
-            sources=sources,
-            num_questions=questions,
-        )
+
+        rprint(f"[dim]Generating guide with {questions} suggested questions (model: {chat_model})...[/dim]")
+        try:
+            notebook_guide = generator.generate(
+                all_text,
+                title=notebook_path.name,
+                sources=sources,
+                num_questions=questions,
+            )
+        except Exception as e:
+            if _is_cloud_error(e):
+                rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                rprint(_OLLAMA_CLOUD_HINT)
+            else:
+                rprint(f"[red]✗ Guide generation failed:[/red] {e}")
+            return
         
         # Export based on format
         if fmt == "markdown":
@@ -568,27 +666,29 @@ def guide(notebook: str, fmt: str, output: str, questions: int):
 @click.option("--png", "to_png", is_flag=True, help="Also render to PNG (requires playwright)")
 @click.option("--width", default=1200, help="PNG viewport width")
 @click.option("--height", default=1600, help="PNG viewport height")
-def infographic(notebook: str, template: str, output: str, to_png: bool, width: int, height: int):
+@click.option("--model", "model", default=None, help="Override chat model")
+@click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
+def infographic(notebook: str, template: str, output: str, to_png: bool, width: int, height: int, model: str, use_local: bool):
     """Generate an infographic from PDFs (HTML + optional PNG)"""
     from .config import Config
     from .pdf import parse_pdf
     from .infographic import InfographicGenerator, render_html_to_png
-    
+
     config = Config()
     notebook_path = Path(notebook)
-    
+
     # Find PDFs
     pdfs = list(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
-    
+
     rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
-    
-    generator = InfographicGenerator(
-        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
-    )
-    
+
+    # Initialize generator (cloud by default; --use-local to opt out)
+    chat_model = resolve_chat_model(config, use_local, model)
+    generator = InfographicGenerator(chat_model=chat_model)
+
     try:
         # Combine text from all PDFs
         all_text = ""
@@ -606,13 +706,22 @@ def infographic(notebook: str, template: str, output: str, to_png: bool, width: 
             rprint("[red]No text extracted from any PDFs[/red]")
             return
 
-        rprint(f"[dim]Generating {template} infographic...[/dim]")
-        info = generator.generate(
-            all_text,
-            template=template,
-            title=notebook_path.name,
-            sources=sources,
-        )
+        rprint(f"[dim]Generating {template} infographic with model {chat_model}...[/dim]")
+        try:
+            info = generator.generate(
+                all_text,
+                template=template,
+                title=notebook_path.name,
+                sources=sources,
+            )
+        except (ValueError, RuntimeError) as e:
+            # RuntimeError from the LLM call may be a cloud error
+            if _is_cloud_error(e):
+                rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                rprint(_OLLAMA_CLOUD_HINT)
+            else:
+                rprint(f"[red]✗ Generation failed:[/red] {e}")
+            return
         
         # Determine output paths
         if output:
@@ -655,27 +764,29 @@ def infographic(notebook: str, template: str, output: str, to_png: bool, width: 
               type=click.Choice(["markdown", "csv", "json", "html"]),
               default="markdown", help="Output format")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
-def tables(notebook: str, max_tables: int, fmt: str, output: str):
+@click.option("--model", "model", default=None, help="Override chat model")
+@click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
+def tables(notebook: str, max_tables: int, fmt: str, output: str, model: str, use_local: bool):
     """Extract data tables from PDFs (comparisons, statistics, lists, timelines)"""
     from .config import Config
     from .pdf import parse_pdf
     from .tables import TableExtractor
-    
+
     config = Config()
     notebook_path = Path(notebook)
-    
+
     # Find PDFs
     pdfs = list(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
-    
+
     rprint(f"[green]Found {len(pdfs)} PDF(s)[/green]")
-    
-    extractor = TableExtractor(
-        chat_model=config.get("models", "chat", default="qwen3.5:cloud"),
-    )
-    
+
+    # Initialize extractor (cloud by default; --use-local to opt out)
+    chat_model = resolve_chat_model(config, use_local, model)
+    extractor = TableExtractor(chat_model=chat_model)
+
     all_tables = []
     try:
         for pdf in pdfs:
@@ -685,24 +796,28 @@ def tables(notebook: str, max_tables: int, fmt: str, output: str):
             if not all_text.strip():
                 rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
                 continue
-            
-            rprint(f"[dim]Extracting up to {max_tables} tables...[/dim]")
+
+            rprint(f"[dim]Extracting up to {max_tables} tables (model: {chat_model})...[/dim]")
             try:
                 tables_found = extractor.extract(all_text, max_tables=max_tables, source=pdf.name)
             except RuntimeError as e:
-                rprint(f"[red]✗ Extraction failed for {pdf.name}:[/red] {e}")
+                if _is_cloud_error(e):
+                    rprint(f"[red]✗ Cloud LLM error for {pdf.name}:[/red] {e}")
+                    rprint(_OLLAMA_CLOUD_HINT)
+                else:
+                    rprint(f"[red]✗ Extraction failed for {pdf.name}:[/red] {e}")
                 continue
-            
+
             if tables_found:
                 rprint(f"[green]✓ Found {len(tables_found)} table(s) in {pdf.name}[/green]")
                 all_tables.extend(tables_found)
             else:
                 rprint(f"[yellow]⚠ No tables found in {pdf.name}[/yellow]")
-        
+
         if not all_tables:
             rprint("[yellow]⚠ No tables extracted from any PDFs[/yellow]")
             return
-        
+
         rprint(f"[green]✓ Total: {len(all_tables)} table(s)[/green]")
         
         # Render output
