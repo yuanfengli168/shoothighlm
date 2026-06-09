@@ -18,21 +18,40 @@ class Chunk:
 def parse_pdf(pdf_path: Path) -> Iterator[str]:
     """
     Parse PDF and extract text.
-    
-    Uses docling if available, falls back to pypdf.
+
     Yields text per page.
+
+    Backend selection (env var SHOOTHIGHLM_PDF_BACKEND):
+      - "pypdf"  (default): fast pure-Python text extraction. Works for
+                 PDFs that have a real text layer (the common case for
+                 modern e-books, including most Chinese books).
+      - "docling": heavyweight OCR + layout analysis. Use only for
+                 scanned PDFs with no text layer. 50-100x slower on CPU.
+
+    Falls back to pypdf automatically if docling fails to import or
+    SHOOTHIGHLM_PDF_BACKEND=docling is set but the binary fails to run.
     """
-    try:
-        from docling.document_converter import DocumentConverter
-        converter = DocumentConverter()
-        result = converter.convert(str(pdf_path))
-        yield result.document.export_to_text()
-    except ImportError:
-        # Fallback to pypdf
-        from pypdf import PdfReader
-        reader = PdfReader(str(pdf_path))
-        for page in reader.pages:
-            yield page.extract_text()
+    import os
+    backend = os.environ.get("SHOOTHIGHLM_PDF_BACKEND", "pypdf").lower()
+
+    if backend == "docling":
+        try:
+            from docling.document_converter import DocumentConverter
+            converter = DocumentConverter()
+            result = converter.convert(str(pdf_path))
+            yield result.document.export_to_text()
+            return
+        except Exception:
+            # Fall through to pypdf
+            pass
+
+    # Default: pypdf (fast, works for text-layer PDFs)
+    from pypdf import PdfReader
+    reader = PdfReader(str(pdf_path))
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        if text:
+            yield text
 
 
 def chunk_text(

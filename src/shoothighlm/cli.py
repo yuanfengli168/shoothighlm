@@ -67,29 +67,44 @@ def index(notebook: str):
     for pdf in pdfs:
         rprint(f"[blue]Processing:[/blue] {pdf.name}")
         try:
-            text_gen = parse_pdf(pdf)
-            text = next(text_gen, "")
-            if not text:
+            # Concatenate text from every page (was: only first page!)
+            all_text = "\n\n".join(page_text for page_text in parse_pdf(pdf) if page_text)
+            if not all_text.strip():
                 rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
                 continue
-            
+
             chunks = list(chunk_text(
-                text,
+                all_text,
                 str(pdf),
                 chunk_size=config.get("rag", "chunk_size", default=4096),
                 chunk_overlap=config.get("rag", "chunk_overlap", default=200),
             ))
-            
-            rprint(f"  Extracted {len(chunks)} chunks")
-            
-            # Embed and store
+
+            rprint(f"  Extracted {len(chunks)} chunks ({len(all_text):,} chars)")
+
+            # Embed and store — skip individual chunk failures instead of
+            # aborting the whole PDF (e.g. one bad page can fail to embed
+            # even after truncation).
+            ok = 0
+            failed = 0
             for i, chunk in enumerate(chunks):
-                if i % 10 == 0:
-                    rprint(f"  Embedding chunk {i}/{len(chunks)}...")
-                embedding = embedder.embed(chunk.text)
-                store.add(chunk.chunk_id, chunk.text, chunk.source, embedding)
-            
-            rprint(f"[green]✓ Indexed:[/green] {pdf.name}")
+                if i % 5 == 0 or i == len(chunks) - 1:
+                    rprint(f"  Embedding chunk {i + 1}/{len(chunks)}...")
+                try:
+                    embedding = embedder.embed(chunk.text)
+                    store.add(chunk.chunk_id, chunk.text, chunk.source, embedding)
+                    ok += 1
+                except Exception as e:
+                    failed += 1
+                    rprint(
+                        f"[yellow]  ⚠ Skipped chunk {i + 1} "
+                        f"({len(chunk.text)} chars): {e}[/yellow]"
+                    )
+
+            rprint(
+                f"[green]✓ Indexed:[/green] {pdf.name} "
+                f"[dim]({ok}/{len(chunks)} chunks, {failed} skipped)[/dim]"
+            )
         except Exception as e:
             rprint(f"[red]✗ Error:[/red] {e}")
     
