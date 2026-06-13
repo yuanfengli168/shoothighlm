@@ -26,6 +26,7 @@ import httpx
 import os
 import re
 import jinja2
+from .sampling import stratified_sample, head_sample
 
 
 # Base CSS used by all templates (embedded for portability)
@@ -207,11 +208,14 @@ class InfographicGenerator:
                 f"Choose from: {', '.join(TEMPLATES.keys())}"
             )
 
-        # Truncate long text. Default 12K chars keeps generation fast;
-        # --full uses 50K for higher quality.
+        # Truncate long text. Default 12K uses stratified sampling
+        # (start + middle + end) so long books don't just sample the
+        # intro. --full uses 50K chars in head_sample mode.
         max_chars = 50000 if use_full else 12000
         if len(text) > max_chars:
-            text = text[:max_chars] + "... [truncated]"
+            text = (stratified_sample(text, max_chars)
+                    if not use_full
+                    else head_sample(text, max_chars))
 
         data = self._extract_data(text, template, title)
         if sources:

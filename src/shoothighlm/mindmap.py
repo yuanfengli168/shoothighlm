@@ -1,10 +1,10 @@
 """Mind map extraction from PDF content"""
 
-from pathlib import Path
 from typing import List, Dict, Any
 from dataclasses import dataclass, field
 import json
 import httpx
+from .sampling import even_sample, head_sample
 
 
 @dataclass
@@ -78,44 +78,72 @@ class MindMapExtractor:
         """
         Extract mind map structure from text.
 
+        The mindmap is built by ENUMERATING the book's actual content
+        (parts, chapters, named principles, arguments), not by
+        summarizing it. The default prompt targets 80-150 nodes across
+        3-4 levels of depth, in the same shape as a real table of
+        contents — see research/mindmap-comparison-vs-notebooklm.md for
+        the design rationale.
+
         Args:
             text: Text content to analyze
             title: Title for the root node
-            use_full: If True, use a larger prompt (50K chars instead of
-                the 12K default) for higher-fidelity mind maps of large
-                documents. Slower; costs more tokens.
+            use_full: If True, use a larger 50K-char budget in
+                head_sample mode (front-loaded — good for medium books
+                where the intro summarizes the whole). Default uses
+                25K chars in even_sample mode (uniform — good for
+                enumerating the whole structure of a long book).
 
         Returns:
             MindMapNode tree structure
         """
-        # Truncate if too long (keep under model context limit)
-        # Default 12K = ~3-4K tokens; --full uses 50K = ~12-15K tokens
-        max_chars = 50000 if use_full else 12000
+        # Default 25K chars (~6K tokens) with even sampling — covers
+        # more of the book than the old 12K default without paying the
+        # --full latency cost. --full uses 50K head_sample (faster
+        # and good when the intro is representative of the whole book).
+        max_chars = 50000 if use_full else 25000
         if len(text) > max_chars:
-            text = text[:max_chars] + "... [truncated]"
-        
-        prompt = f"""You are a mind map extraction expert. Analyze the following text and extract a hierarchical mind map structure.
+            text = (even_sample(text, max_chars)
+                    if not use_full
+                    else head_sample(text, max_chars))
 
-## Instructions:
-- Identify the main topics and subtopics
-- Create a tree structure with 2-4 levels of depth
-- Each node should have a clear, concise title (5-15 words)
-- Add brief notes (1-2 sentences) for important nodes
-- Focus on key concepts, relationships, and structure
-- Output ONLY valid JSON, no other text
+        prompt = f"""You are a book table-of-contents extractor. Extract a HIERARCHICAL, COMPREHENSIVE mind map of the book — NOT a summary.
 
-## Output Format:
+## Approach
+- ENUMERATE, do not summarize. If the book has 12 chapters, the map has 12 level-1 nodes.
+- Each leaf should be a SPECIFIC named principle, method, story, definition, or argument from the book — never a vague theme like "工作态度" (work attitude). Prefer the book's own terminology: if the book calls a concept "极度认真工作", use that exact phrasing.
+- Aim for 80–150 total nodes. A 1,000-page book deserves a rich map, not a 10-bullet list.
+- Use the book's own language (Chinese stays Chinese, English stays English, etc.).
+
+## Structure (3–4 levels of depth)
+- Level 1: parts / sections / major themes (5–10 nodes)
+- Level 2: chapters or major arguments (3–7 per level-1 node)
+- Level 3: key concepts under each chapter (2–5 per level-2 node)
+- Level 4 (optional): concrete examples, named people, formulas, quotable phrases
+- Every node has a short title (3–12 words, in the book's language).
+- Use the `notes` field for a 1-sentence explanation ONLY when the title alone is ambiguous.
+
+## Output Format (strict)
 ```json
 {{
   "id": "root",
-  "title": "Main Topic",
-  "notes": "Brief description",
+  "title": "<book title>",
+  "notes": "",
   "children": [
     {{
-      "id": "topic-1",
-      "title": "Subtopic 1",
-      "notes": "...",
-      "children": [...]
+      "id": "part-1",
+      "title": "Part 1 Name",
+      "notes": "",
+      "children": [
+        {{
+          "id": "ch-1",
+          "title": "Chapter 1 Name",
+          "notes": "",
+          "children": [
+            {{"id": "concept-1", "title": "Named principle or argument", "notes": "", "children": []}}
+          ]
+        }}
+      ]
     }}
   ]
 }}

@@ -58,7 +58,7 @@ def test_table_extractor_has_use_full():
 # ============== use_full behavior (verifies max_chars change) ==============
 
 def test_mindmap_use_full_uses_larger_limit():
-    """use_full=True should use 50K chars, default is 12K."""
+    """use_full=True should use 50K chars, default is 25K."""
     from shoothighlm.mindmap import MindMapExtractor
     ext = MindMapExtractor(chat_model="test")
 
@@ -74,32 +74,34 @@ def test_mindmap_use_full_uses_larger_limit():
 
 
 def test_mindmap_use_full_truncation_threshold():
-    """Verify that use_full=True truncates at 50K, default at 12K."""
+    """Default uses even_sample; --full uses head_sample (no cut at 28K)."""
     from shoothighlm.mindmap import MindMapExtractor
     ext = MindMapExtractor(chat_model="test")
 
-    # Text just over 12K but under 50K
-    text_15k = "A" * 15000
+    # Text just over 25K but under 50K — the new default budget
+    text_28k = "A" * 28000
     mock_response = MagicMock()
     mock_response.json.return_value = {"response": '{"id": "root", "title": "T", "children": []}'}
     mock_response.raise_for_status = MagicMock()
     with patch.object(ext.client, "post", return_value=mock_response) as mock_post:
-        ext.extract(text_15k, use_full=False)
+        ext.extract(text_28k, use_full=False)
         call_no_full = mock_post.call_args
-        # Default should have truncated to ~12K + "... [truncated]"
         prompt_no_full = call_no_full[1]["json"]["prompt"]
-        assert "... [truncated]" in prompt_no_full
-        # Check: prompt body should be < 15K chars (12K + prompt template)
-        assert len(prompt_no_full) < 13000
+        # Default mode (25K) uses even_sample — 28K text gets truncated
+        # to 25K and emits section-break markers.
+        assert "[... section break ...]" in prompt_no_full
+        # 25K char budget + prompt template
+        assert len(prompt_no_full) < 30000
 
         mock_post.reset_mock()
-        ext.extract(text_15k, use_full=True)
+        ext.extract(text_28k, use_full=True)
         call_full = mock_post.call_args
         prompt_full = call_full[1]["json"]["prompt"]
-        # use_full=True should NOT truncate at 15K
-        assert "... [truncated]" not in prompt_full
-        # The full 15K should be in the prompt
-        assert "A" * 15000 in prompt_full
+        # use_full=True uses head_sample, which doesn't truncate at 28K
+        # (28K < 50K budget) and doesn't emit the even_sample markers.
+        assert "[... section break ...]" not in prompt_full
+        # The full 28K should be in the prompt (head_sample, no cut)
+        assert "A" * 28000 in prompt_full
 
 
 # ============== CLI flag propagation ==============

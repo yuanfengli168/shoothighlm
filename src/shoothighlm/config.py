@@ -69,7 +69,11 @@ class Config:
                 "chunk_size": 4096,
                 "chunk_overlap": 200,
                 "top_k": 5,
-                "min_similarity": 0.7,
+                # 0.7 was too strict for bge-m3 + Chinese (rarely clears 0.55).
+                # 0.4 matches the template and the live config; with
+                # fallback_top_n in chat, this gives the best quality.
+                # See doc/CHANGELOG.md and doc/ChallengesInChinese.md.
+                "min_similarity": 0.4,
             },
         }
     

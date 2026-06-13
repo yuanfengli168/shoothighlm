@@ -162,25 +162,28 @@ def test_flashcard_generator_generate_no_json(generator):
 
 
 def test_flashcard_generator_truncate_long_text(generator):
-    """Test that long text is truncated"""
+    """Test that long text uses stratified sampling (start + middle + end)."""
     mock_response = Mock()
     mock_response.json.return_value = {
         "response": '[{"id": "card-1", "question": "Q?", "answer": "A"}]'
     }
     mock_response.raise_for_status = Mock()
-    
+
     # Create very long text
     long_text = "A" * 100000
-    
+
     with patch.object(generator.client, 'post', return_value=mock_response) as mock_post:
         generator.generate(long_text, num_cards=5)
-        
-        # Check that truncated text was sent
+
+        # Check that stratified sampling was applied (not raw head truncation)
         call_args = mock_post.call_args
         prompt = call_args[1]['json']['prompt']
-        
+
         assert len(prompt) < 40000  # Should be truncated
-        assert "... [truncated]" in prompt
+        # Default mode uses stratified_sample, not the legacy
+        # "... [truncated]" head-cut marker.
+        assert "[... middle of document ...]" in prompt
+        assert "[... end of document ...]" in prompt
 
 
 def test_flashcard_generator_custom_num_cards(generator):

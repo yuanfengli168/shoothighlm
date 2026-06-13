@@ -159,26 +159,28 @@ def test_podcast_generator_generate_no_json(generator):
 
 
 def test_podcast_generator_truncate_long_text(generator):
-    """Test that long text is truncated"""
+    """Test that long text uses stratified sampling (start + middle + end)."""
     mock_response = Mock()
     mock_response.json.return_value = {
         "response": '{"title": "Test", "duration_minutes": 5, "host_a_name": "Alex", "host_b_name": "Jamie", "segments": []}'
     }
     mock_response.raise_for_status = Mock()
-    
+
     # Create very long text
     long_text = "A" * 100000
-    
+
     with patch.object(generator.client, 'post', return_value=mock_response) as mock_post:
         generator.generate(long_text, title="Test")
-        
-        # Check that truncated text was sent
+
+        # Check that stratified sampling was applied (not raw head truncation)
         call_args = mock_post.call_args
         prompt = call_args[1]['json']['prompt']
-        
-        assert len(prompt) < 40000  # Should be truncated
-        assert "... [truncated]" in prompt
 
+        assert len(prompt) < 40000  # Should be truncated
+        # Default mode uses stratified_sample, not the legacy
+        # "... [truncated]" head-cut marker.
+        assert "[... middle of document ...]" in prompt
+        assert "[... end of document ...]" in prompt
 
 def test_podcast_generator_duration_affects_dialogues(generator):
     """Test that duration affects number of dialogues"""

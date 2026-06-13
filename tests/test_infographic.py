@@ -130,6 +130,7 @@ def test_generate_unknown_template_raises(generator):
 
 
 def test_generate_truncates_long_text(generator):
+    """Test that long text uses stratified sampling (start + middle + end)."""
     mock_response = Mock()
     mock_response.json.return_value = {
         "response": '{"summary": "S", "key_topics": []}'
@@ -143,7 +144,10 @@ def test_generate_truncates_long_text(generator):
         
         call_args = mock_post.call_args
         prompt = call_args[1]["json"]["prompt"]
-        assert "... [truncated]" in prompt
+        # Default mode uses stratified_sample, not the legacy
+        # "... [truncated]" head-cut marker.
+        assert "[... middle of document ...]" in prompt
+        assert "[... end of document ...]" in prompt
         assert len(prompt) < 40000
 
 

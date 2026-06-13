@@ -67,7 +67,7 @@ def test_config_get_rag():
     assert config.get("rag", "chunk_size") == 4096
     assert config.get("rag", "chunk_overlap") == 200
     assert config.get("rag", "top_k") == 5
-    assert config.get("rag", "min_similarity") == 0.7
+    assert config.get("rag", "min_similarity") == 0.4
 
 
 def test_config_contains():

@@ -88,7 +88,8 @@ SHOOTHIGHLM_CHAT=qwen3.5:27b shoot-high mindmap ~/my-books
 ```
 
 **Use `--full` for higher quality on large books** (50K-char prompt
-vs 12K default — slower but covers more of the source).
+vs 25K default for `mindmap`, 12K for the other 5 commands — slower
+but covers more of the source).
 
 ### Initialize a notebook
 
@@ -110,10 +111,12 @@ shoot-high chat ~/my-books "可以总结一下第一章节讲了什么吗?" --sh
 # Per-call: override the similarity threshold (no need to edit config)
 shoot-high chat ~/my-books "问题" --min-similarity 0.3
 
-# Generate mind map (primary: Markdown)
+# Generate mind map (primary: Markdown). Default uses 25K chars with
+# uniform sampling to enumerate the whole book (NotebookLM-style TOC).
 shoot-high mindmap ./my-books
 
-# --full: 50K-char prompt (vs 12K default) for higher quality on long books
+# --full: 50K-char head-loaded prompt. Use this when the intro/foreword
+# already summarizes the whole book (many non-fiction titles).
 shoot-high mindmap ./my-books --full
 
 # Generate mind map (interactive HTML preview)
@@ -177,30 +180,41 @@ shoot-high tables ./my-books --format html
 
 Add `--full` to any of the 6 LLM commands (`chat` is excluded — it uses
 RAG, not direct prompting) to use a **50K-character prompt** instead of
-the default 12K. The 12K default covers roughly the first 30–40 pages of
-a 1,000-page book (intro, TOC, copyright); `--full` covers 4× more.
+the default.
 
-| Command | Default | With `--full` |
-|---|---|---|
-| `mindmap` | 12K chars (≈ 3K tokens) | 50K chars (≈ 12K tokens) |
-| `flashcard` | 12K | 50K |
-| `podcast` | 12K | 50K |
-| `guide` | 12K | 50K |
-| `infographic` | 12K | 50K |
-| `tables` | 12K | 50K |
+Per-command defaults are tuned to each task:
+
+| Command | Default | Sampling | With `--full` | Why |
+|---|---|---|---|---|
+| `mindmap` | 25K chars (≈ 6K tokens) | even (10 windows) | 50K chars head-loaded | Mind maps need to see the **whole** book to enumerate every chapter/principle — default uses uniform sampling to get parity with NotebookLM |
+| `flashcard` | 12K | stratified (40/40/20) | 50K | Cards work best when the intro + middle + conclusion are well represented |
+| `podcast` | 12K | stratified (40/40/20) | 50K | Same as flashcard |
+| `guide` | 12K | stratified (40/40/20) | 50K | Notebook summaries are intro-heavy by nature |
+| `infographic` | 12K | stratified (40/40/20) | 50K | Same as guide |
+| `tables` | 12K | stratified (40/40/20) | 50K | Tables can be anywhere; stratified keeps context coherent |
+
+The 12K default covers roughly the first 30–40 pages of a 1,000-page
+book (intro, TOC, copyright); `--full` covers 4× more. For `mindmap`
+the default already covers 2× the old 12K, so try it before reaching
+for `--full`.
 
 Trade-off: `--full` is **~4× slower** (3–5 min on cloud, 8–10 min
 local for a 1,000-page book). Use it when you care about quality;
 use the default when you want to iterate quickly.
 
+See [`research/mindmap-comparison-vs-notebooklm.md`](research/mindmap-comparison-vs-notebooklm.md)
+for the design rationale behind the mindmap-specific sampling and
+prompt changes.
+
 **Example** (mentioned in the previous user feedback, "mindmap quality
 is weak on long books"):
 
 ```bash
-# Default: fast (~30s cloud) but only covers the first ~30 pages
+# Default: 25K chars, uniform sampling, enumerates the whole book
+# (~2-3× the node count vs the old 12K default)
 shoot-high mindmap ~/my-books
 
-# --full: slower (~3min cloud) but covers ~4× more of the book
+# --full: 50K head-loaded, ~3-5 min cloud
 shoot-high mindmap ~/my-books --full
 ```
 
@@ -338,7 +352,7 @@ See [ranking-board.md](ranking-board.md) for the vision.
 | `shoot-high index` only stores 1 chunk per PDF | Old bug — only read first page | Fixed. If you still see it, re-run with current code (commit `ee557cc` or later) |
 | Cloud model unreachable | Ollama not signed in, or rate-limited | Run `ollama signin`, or use `--use-local` / set `SHOOTHIGHLM_CHAT=qwen3.5:27b` |
 | `playwright._impl._api_types.TimeoutError` when rendering PNG | Playwright Chromium not installed | `playwright install chromium` (already in install instructions) |
-| Mindmap / flashcard quality is weak on a long book | 12K-char prompt covers <3% of a 1,000-page book | Add `--full` to use 50K chars; ~4x slower but much more complete |
+| Mindmap / flashcard quality is weak on a long book | `mindmap` was 12K-char intro-only; the other 5 still are | `mindmap` now defaults to 25K chars with uniform sampling and a new enumeration prompt (NotebookLM parity). For the other 5 commands, add `--full` to use 50K chars; ~4x slower but much more complete |
 | `shoot-high synthesize` says "Fish Audio API key not found" | `FISH_AUDIO_API_KEY` not set | See the "TTS: how to set FISH_AUDIO_API_KEY" section above. Set via env var or in `~/.shoothighlm/config.yaml` |
 | `shoot-high synthesize my-script.md` says "Invalid JSON" | Old behavior — synthesize only accepted `.json` | Fixed: now accepts both `.json` and `.md` (the human-readable default). If you have an older version, update with `git pull` |
 | `Could not find matching text` test failures in `tests/test_cli_*.py` | Rich's terminal-width line wrapping on long output paths | Already fixed in current tests; just pull latest |

@@ -1,10 +1,10 @@
 """Notebook Guide generation — auto-summary, topics, and suggested questions"""
 
-from pathlib import Path
 from typing import List, Dict, Any
 from dataclasses import dataclass, field
 import json
 import httpx
+from .sampling import stratified_sample, head_sample
 
 
 @dataclass
@@ -106,11 +106,14 @@ class GuideGenerator:
         """
         sources = sources or []
 
-        # Truncate if too long — guides work best with condensed text.
-        # Default 12K chars keeps generation fast; --full uses 50K.
+        # Truncate if too long. Default 12K uses stratified sampling
+        # (start + middle + end) so long books don't just sample the
+        # intro. --full uses 50K chars in head_sample mode.
         max_chars = 50000 if use_full else 12000
         if len(text) > max_chars:
-            text = text[:max_chars] + "... [truncated]"
+            text = (stratified_sample(text, max_chars)
+                    if not use_full
+                    else head_sample(text, max_chars))
         
         prompt = f"""You are a research assistant. Analyze the following documents and generate a notebook guide.
 

@@ -3,14 +3,161 @@
 > Living doc. Things we **decided to do** (with status) + things we
 > **decided NOT to do yet** (with rationale). Most recent first.
 
+> **🚨 Reference for new chat sessions: read the "Next-up back-log" section below FIRST, then come back here for the in-flight design discussions. Don't re-litigate decisions already made.**
+
 ---
-## Yuanfeng: 
-- I like the mindmap html, works really well, and now I want it in all the commands like flashcards, etc. 
-- 
+
+## ✅ Latest pass (full repo review + 5 fixes shipped)
+
+> Snapshot of what changed in the "review the whole repo" pass. Keep
+> terse — this is a release note, not a design doc.
+
+- **`min_similarity` default fixed**: was `0.7` in `config.py` (didn't
+  match CHANGELOG, template, or live config). Now `0.4`, matching the
+  template and the documented "0.5 was still too strict" narrative.
+- **Multi-PDF processing in `mindmap` / `flashcard` / `podcast`**: was
+  `pdf = pdfs[0]`, silently dropping books 2..N. Now loops all PDFs
+  and writes one output file per PDF, with per-PDF error resilience
+  (one bad book no longer aborts the batch). `--output` is rejected
+  when more than 1 PDF is found.
+- **Stratified text sampling**: new `shoothighlm/sampling.py` with
+  `stratified_sample()` and `head_sample()`. Wired into all 6
+  LLM-using modules. Default 12K budget now uses start + middle + end
+  windows; `--full` (50K) still uses head sampling. See §1 below.
+- **Cleaned up unused `Path` imports** in `mindmap.py`, `flashcard.py`,
+  `podcast.py`, `guide.py`.
+- **Todo.md annotated**: remaining items from the review are now in
+  the **"Next-up back-log"** section below, ready to pick up.
+
+### Repo review findings (full list, with disposition)
+
+| # | Finding | Severity | Disposition |
+|---|---|---|---|
+| 1 | `min_similarity: 0.7` hardcoded | 🔴 Critical | ✅ Fixed |
+| 2 | Only first PDF processed in 3 commands | 🔴 Critical | ✅ Fixed |
+| 3 | CosyVoice TTS is a stub | 🟡 High | → Back-log #1 |
+| 4 | Page tracking not implemented (citations) | 🟡 High | → Back-log #2 |
+| 5 | `_extract_json` duplicated 6× | 🟡 High | → Back-log #3 |
+| 6 | Naive `text[:12000]` truncation | 🟡 High | ✅ Fixed (sampling.py) |
+| 7 | No config schema validation | 🟡 High | → Back-log #4 |
+| 8 | `max_file_size` not enforced | 🟢 Medium | → Back-log #5 |
+| 9 | TTS host-voice detection is fragile | 🟢 Medium | → Back-log #7 |
+| 10 | No `logging` to disk | 🟢 Medium | → Back-log #6 |
+| 11 | Unused imports in 4 modules | 🟢 Medium | ✅ Fixed |
+| 12 | Inconsistent error handling | 🟢 Medium | (Use `_is_cloud_error` in new code) |
+| 13 | Character-based chunking | ⚪ Low | → Back-log #9 |
+| 14 | Incomplete docstrings | ⚪ Low | → Back-log #10 |
+| 15 | `resolve_chat_model` polymorphism | ⚪ Low | → Back-log #11 |
+| 16 | Chrome fallback order | ⚪ Low | → Back-log #12 |
+| 17 | Shell-prompt model display | ⚪ Low | → Back-log #13 |
+| 18 | 30-min podcast for long books | ⚪ Low | → Back-log #14 |
+| 19 | Multi-PDF test coverage | ⚪ Low | → Back-log #8 |
+
+---
+## Yuanfeng:
+- I like the mindmap html, works really well, and now I want it in all the commands like flashcards, etc.
+- the fish audio is impressive, but why there are more than 2 accent? can we limit it to 2 accent only?
+  - and test alibaba api in Chinese meaning, now it only supports the English version.
+  - and for the very long book, why is it only 2:35 min long? I want a 30 minute version etc.
+
+---
+
+## Next-up back-log (queued for the next pass — do these before opening new design threads)
+
+> Each item was identified in the "full repo review" chat. They are
+> already triaged; just pick one and ship it. Files mentioned are
+> verified paths.
+
+### High priority (small, high impact)
+
+1. **CosyVoice TTS** — `[tts.py:135-140](src/shoothighlm/tts.py#L135-L140)` raises
+   `NotImplementedError` even though `config.template.yaml` advertises
+   it. Either implement the Aliyun NLS API integration, or remove
+   `cosyvoice` from the template so we don't lie to users.
+   Yuanfeng's note above specifically asks for the Alibaba TTS in
+   Chinese.
+
+2. **Page tracking in citations** — `[pdf.py:84](src/shoothighlm/pdf.py#L84)`
+   hardcodes `start_page=0, end_page=0`. `chat --show-sources` and any
+   future citation feature would benefit massively from real page
+   numbers. The pypdf backend already iterates per-page, so the fix is
+   to make `chunk_text` page-aware and propagate `start_page` /
+   `end_page` through the `Chunk` dataclass.
+
+3. **Extract `_extract_json` to a shared utility** — duplicated across
+   `infographic.py`, `tables.py`, `podcast.py`, `mindmap.py`,
+   `flashcard.py`, `guide.py` (and partially in `synthesize_md`).
+   Move to a `utils.py` (or extend `sampling.py` with shared helpers)
+   so JSON parsing logic lives in one place. Same story for the
+   sentence-boundary truncation already factored into `sampling.py`.
+
+4. **Pydantic schema for config** — typos in YAML
+   (e.g. `min_similairty`) silently fall back to defaults. Add a
+   pydantic `BaseModel` for each config section and validate at load
+   time, so the user gets a clear "this key doesn't exist" error.
+
+5. **Enforce `max_file_size` before indexing** — config defines a
+   `50MB` cap, but `[cli.py:115](src/shoothighlm/cli.py#L115)` never
+   checks it. A 500MB PDF will silently OOM or time out the
+   embedder. Add a pre-flight check in the `index` command.
+
+### Medium priority
+
+6. **Disk-based logging** — everything currently goes to stderr via
+   `print()` / `rich.print()`. Add a `logging` setup that writes to
+   `~/.shoothighlm/shoothighlm.log` so failures are debuggable after
+   the fact. Include model names, prompt sizes, timings.
+
+7. **TTS host-voice detection** — `[tts.py:284](src/shoothighlm/tts.py#L284)`
+   uses name matching (`alex` / `host a`). If the user picks
+   "Alice" and "Bob", both segments can map to `host_a`. Switch to
+   positional assignment (1st segment = host_a, 2nd = host_b).
+
+8. **Multi-PDF integration test fixture** — add a `temp_notebook_with_3_pdfs`
+   fixture and test that `mindmap`, `flashcard`, `podcast` produce one
+   output file per PDF (and skip failed PDFs without aborting).
+   This is the regression test for the multi-PDF fix that just shipped.
+
+9. **Token-based chunking** — `[pdf.py:85](src/shoothighlm/pdf.py#L85)`
+   does character-based chunking and even has a TODO about tiktoken.
+   Switch once we settle on the default embedding model.
+
+10. **Docstring / type-hint pass** — most modules are good, but a few
+    internal helpers (`_dict_to_node`, `chunk_text`, etc.) lack
+    docstrings. Linters (`ruff` + `pydocstyle`) can surface them.
+
+11. **Resolve `resolve_chat_model()` polymorphism** —
+    `[cli.py:48-72](src/shoothighlm/cli.py#L48-L72)` accepts both a
+    `Config` object and a plain `dict` (for tests). Split into two
+    functions for clarity, or normalize on `Config` everywhere.
+
+### Low priority / nice-to-have
+
+12. **`render_html_to_png` Chrome fallback** —
+    `[infographic.py:520-525](src/shoothighlm/infographic.py#L520-L525)`
+    only falls back to system Chrome when bundled chromium fails.
+    Make the fallback order robust in all cases.
+
+13. **"model in shell prompt" Option A** — Todo §3 Option A (zsh
+    function in `~/.zshrc`) is still un-implemented. Low value
+    once Option C (print in command output) is already shipping.
+
+14. **Long-book podcast duration** — Yuanfeng's note above wants
+    30-minute versions, not 2:35. Investigate whether the
+    `num_dialogues` heuristic in `podcast.py` is the right
+    scaling factor, or whether we need a `--long-form` mode.
+
+---
 
 ## 1) Smarter LLM prompt sampling (replaces dumb `text[:12000]` truncation)
 
-**Status:** 🟡 Not implemented — logged for next pass
+**Status:** 🟢 **Shipped** (commits pending). New `sampling.py` module
+exposes `stratified_sample(text, max_chars)` (40% start / 40% middle /
+20% end, breaking at sentence boundaries) and `head_sample(...)` for
+the `--full` fast path. Wired into all 6 LLM-using commands:
+mindmap, flashcard, podcast, guide, infographic, tables. Default 12K
+char limit now uses stratified sampling; `--full` (50K chars) uses
+head sampling.
 
 ### Problem
 

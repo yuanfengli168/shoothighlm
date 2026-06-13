@@ -116,8 +116,9 @@ def index(notebook: str):
     config = init_config()
     notebook_path = Path(notebook)
     
-    # Find PDFs
-    pdfs = list(notebook_path.glob("*.pdf"))
+    # Find PDFs. Sort alphabetically for deterministic output order
+    # (pathlib.glob order is filesystem-dependent).
+    pdfs = sorted(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
@@ -271,12 +272,12 @@ def chat(notebook: str, question: tuple[str], model: str, use_local: bool, show_
 @main.command()
 @click.argument("notebook", type=click.Path(exists=True))
 @click.option("--format", "fmt", type=click.Choice(["markdown", "opml", "html", "json"]), default="markdown")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF only)")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
 @click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity mind maps on large books")
 def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool, use_full: bool):
-    """Generate mind map from PDFs"""
+    """Generate mind map from PDFs (one mind map per PDF in the notebook)"""
     from .config import Config
     from .pdf import parse_pdf
     from .mindmap import MindMapExtractor
@@ -284,8 +285,9 @@ def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool, u
     config = Config()
     notebook_path = Path(notebook)
 
-    # Find PDFs
-    pdfs = list(notebook_path.glob("*.pdf"))
+    # Find PDFs. Sort alphabetically for deterministic output order
+    # (pathlib.glob order is filesystem-dependent).
+    pdfs = sorted(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
@@ -296,43 +298,59 @@ def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool, u
     chat_model = resolve_chat_model(config, use_local, model)
     extractor = MindMapExtractor(chat_model=chat_model)
 
+    # --output only makes sense for a single PDF. Reject if multiple
+    # PDFs are found so we don't silently overwrite the first one.
+    if output and len(pdfs) > 1:
+        rprint(
+            "[red]✗ --output can only be used with a single PDF. "
+            f"Found {len(pdfs)} PDFs in {notebook}. "
+            "Drop the --output flag to write one mind map per PDF.[/red]"
+        )
+        extractor.close()
+        return
+
+    output_dir = notebook_path / "output"
+    if not output:
+        output_dir.mkdir(exist_ok=True)
+
     try:
-        # Process first PDF (for now)
-        pdf = pdfs[0]
-        rprint(f"[blue]Processing:[/blue] {pdf.name}")
+        for pdf in pdfs:
+            rprint(f"[blue]Processing:[/blue] {pdf.name}")
 
-        # Concatenate text from every page (was: only first page!)
-        all_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
-        if not all_text.strip():
-            rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
-            return
+            # Concatenate text from every page (was: only first page!)
+            all_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
+            if not all_text.strip():
+                rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
+                continue
 
-        rprint(f"  Extracted {len(all_text):,} chars")
-        rprint(f"[dim]Extracting mind map with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
-        try:
-            mindmap_tree = extractor.extract(all_text, title=pdf.stem, use_full=use_full)
-        except Exception as e:
-            if _is_cloud_error(e):
-                rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
-                rprint(_OLLAMA_CLOUD_HINT)
-            else:
-                rprint(f"[red]✗ Mind map generation failed:[/red] {e}")
-            return
-        
-        # Export based on format
-        if fmt == "markdown":
-            content = mindmap_tree.to_markdown()
-            ext = ".md"
-        elif fmt == "opml":
-            content = f'<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n<head><title>{pdf.stem}</title></head>\n<body>\n{mindmap_tree.to_opml()}\n</body>\n</opml>'
-            ext = ".opml"
-        elif fmt == "json":
-            content = json.dumps(mindmap_tree.to_dict(), indent=2, ensure_ascii=False)
-            ext = ".json"
-        elif fmt == "html":
-            # Generate Markmap HTML
-            md_content = mindmap_tree.to_markdown()
-            content = f"""<!DOCTYPE html>
+            rprint(f"  Extracted {len(all_text):,} chars")
+            rprint(f"[dim]Extracting mind map with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
+            try:
+                mindmap_tree = extractor.extract(all_text, title=pdf.stem, use_full=use_full)
+            except Exception as e:
+                if _is_cloud_error(e):
+                    rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                    rprint(_OLLAMA_CLOUD_HINT)
+                else:
+                    rprint(f"[red]✗ Mind map generation failed:[/red] {e}")
+                # Per-PDF error: keep going so one bad book doesn't
+                # kill the whole batch.
+                continue
+
+            # Export based on format
+            if fmt == "markdown":
+                content = mindmap_tree.to_markdown()
+                ext = ".md"
+            elif fmt == "opml":
+                content = f'<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n<head><title>{pdf.stem}</title></head>\n<body>\n{mindmap_tree.to_opml()}\n</body>\n</opml>'
+                ext = ".opml"
+            elif fmt == "json":
+                content = json.dumps(mindmap_tree.to_dict(), indent=2, ensure_ascii=False)
+                ext = ".json"
+            elif fmt == "html":
+                # Generate Markmap HTML
+                md_content = mindmap_tree.to_markdown()
+                content = f"""<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -352,33 +370,27 @@ def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool, u
   </div>
 </body>
 </html>"""
-            ext = ".html"
-        
-        # Write to file
-        if output:
-            output_path = Path(output)
-        else:
-            output_dir = notebook_path / "output"
-            output_dir.mkdir(exist_ok=True)
-            output_path = output_dir / f"{pdf.stem}-mindmap{ext}"
-        
-        output_path.write_text(content, encoding="utf-8")
-        rprint(f"[green]✓ Mind map saved to:[/green] {output_path}")
-        
+                ext = ".html"
+
+            # Write to file
+            output_path = Path(output) if output else output_dir / f"{pdf.stem}-mindmap{ext}"
+            output_path.write_text(content, encoding="utf-8")
+            rprint(f"[green]✓ Mind map saved to:[/green] {output_path}")
+
     finally:
         extractor.close()
 
 
 @main.command()
 @click.argument("notebook", type=click.Path(exists=True))
-@click.option("--num", "-n", default=10, help="Number of flashcards to generate")
+@click.option("--num", "-n", default=10, help="Number of flashcards to generate per PDF")
 @click.option("--format", "fmt", type=click.Choice(["markdown", "csv", "json"]), default="markdown")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF only)")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
 @click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity flashcard generation")
 def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_local: bool, use_full: bool):
-    """Generate flashcards from PDFs"""
+    """Generate flashcards from PDFs (one flashcard set per PDF in the notebook)"""
     from .config import Config
     from .pdf import parse_pdf
     from .flashcard import FlashcardGenerator
@@ -386,8 +398,9 @@ def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_lo
     config = Config()
     notebook_path = Path(notebook)
 
-    # Find PDFs
-    pdfs = list(notebook_path.glob("*.pdf"))
+    # Find PDFs. Sort alphabetically for deterministic output order
+    # (pathlib.glob order is filesystem-dependent).
+    pdfs = sorted(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
@@ -398,61 +411,69 @@ def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_lo
     chat_model = resolve_chat_model(config, use_local, model)
     generator = FlashcardGenerator(chat_model=chat_model)
 
+    # --output only makes sense for a single PDF. Reject if multiple
+    # PDFs are found so we don't silently overwrite the first one.
+    if output and len(pdfs) > 1:
+        rprint(
+            "[red]✗ --output can only be used with a single PDF. "
+            f"Found {len(pdfs)} PDFs in {notebook}. "
+            "Drop the --output flag to write one flashcard set per PDF.[/red]"
+        )
+        generator.close()
+        return
+
+    output_dir = notebook_path / "output"
+    if not output:
+        output_dir.mkdir(exist_ok=True)
+
     try:
-        # Process first PDF (for now)
-        pdf = pdfs[0]
-        rprint(f"[blue]Processing:[/blue] {pdf.name}")
+        for pdf in pdfs:
+            rprint(f"[blue]Processing:[/blue] {pdf.name}")
 
-        # Concatenate text from every page (was: only first page!)
-        all_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
-        if not all_text.strip():
-            rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
-            return
+            # Concatenate text from every page (was: only first page!)
+            all_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
+            if not all_text.strip():
+                rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
+                continue
 
-        rprint(f"[dim]Generating {num} flashcards with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
-        try:
-            cards = generator.generate(all_text, num_cards=num, source=pdf.name, use_full=use_full)
-        except Exception as e:
-            if _is_cloud_error(e):
-                rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
-                rprint(_OLLAMA_CLOUD_HINT)
-            else:
-                rprint(f"[red]✗ Flashcard generation failed:[/red] {e}")
-            return
+            rprint(f"[dim]Generating {num} flashcards with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
+            try:
+                cards = generator.generate(all_text, num_cards=num, source=pdf.name, use_full=use_full)
+            except Exception as e:
+                if _is_cloud_error(e):
+                    rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                    rprint(_OLLAMA_CLOUD_HINT)
+                else:
+                    rprint(f"[red]✗ Flashcard generation failed:[/red] {e}")
+                continue
 
-        if not cards:
-            rprint("[yellow]⚠ No flashcards generated[/yellow]")
-            return
+            if not cards:
+                rprint(f"[yellow]⚠ No flashcards generated for {pdf.name}[/yellow]")
+                continue
 
-        rprint(f"[green]✓ Generated {len(cards)} flashcards[/green]")
-        
-        # Export based on format
-        if fmt == "markdown":
-            content = "# Flashcards\n\n"
-            for card in cards:
-                content += card.to_markdown() + "\n\n"
-            ext = ".md"
-        elif fmt == "csv":
-            lines = ["question,answer,tags"]
-            for card in cards:
-                lines.append(card.to_anki_csv())
-            content = "\n".join(lines)
-            ext = ".csv"
-        elif fmt == "json":
-            content = json.dumps([card.to_dict() for card in cards], indent=2, ensure_ascii=False)
-            ext = ".json"
-        
-        # Write to file
-        if output:
-            output_path = Path(output)
-        else:
-            output_dir = notebook_path / "output"
-            output_dir.mkdir(exist_ok=True)
-            output_path = output_dir / f"{pdf.stem}-flashcards{ext}"
-        
-        output_path.write_text(content, encoding="utf-8")
-        rprint(f"[green]✓ Flashcards saved to:[/green] {output_path}")
-        
+            rprint(f"[green]✓ Generated {len(cards)} flashcards[/green]")
+
+            # Export based on format
+            if fmt == "markdown":
+                content = "# Flashcards\n\n"
+                for card in cards:
+                    content += card.to_markdown() + "\n\n"
+                ext = ".md"
+            elif fmt == "csv":
+                lines = ["question,answer,tags"]
+                for card in cards:
+                    lines.append(card.to_anki_csv())
+                content = "\n".join(lines)
+                ext = ".csv"
+            elif fmt == "json":
+                content = json.dumps([card.to_dict() for card in cards], indent=2, ensure_ascii=False)
+                ext = ".json"
+
+            # Write to file
+            output_path = Path(output) if output else output_dir / f"{pdf.stem}-flashcards{ext}"
+            output_path.write_text(content, encoding="utf-8")
+            rprint(f"[green]✓ Flashcards saved to:[/green] {output_path}")
+
     finally:
         generator.close()
 
@@ -461,14 +482,14 @@ def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_lo
 @click.argument("notebook", type=click.Path(exists=True))
 @click.option("--duration", "-d", default=5, help="Podcast duration in minutes")
 @click.option("--format", "fmt", type=click.Choice(["markdown", "json"]), default="markdown")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF only)")
 @click.option("--host-a", default="Alex", help="Host A name")
 @click.option("--host-b", default="Jamie", help="Host B name")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
 @click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity podcast scripts")
 def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, host_b: str, model: str, use_local: bool, use_full: bool):
-    """Generate podcast from PDFs"""
+    """Generate podcast from PDFs (one script per PDF in the notebook)"""
     from .config import Config
     from .pdf import parse_pdf
     from .podcast import PodcastGenerator
@@ -476,8 +497,9 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, ho
     config = Config()
     notebook_path = Path(notebook)
 
-    # Find PDFs
-    pdfs = list(notebook_path.glob("*.pdf"))
+    # Find PDFs. Sort alphabetically for deterministic output order
+    # (pathlib.glob order is filesystem-dependent).
+    pdfs = sorted(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
@@ -492,49 +514,57 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, ho
         host_b_name=host_b,
     )
 
+    # --output only makes sense for a single PDF. Reject if multiple
+    # PDFs are found so we don't silently overwrite the first one.
+    if output and len(pdfs) > 1:
+        rprint(
+            "[red]✗ --output can only be used with a single PDF. "
+            f"Found {len(pdfs)} PDFs in {notebook}. "
+            "Drop the --output flag to write one podcast script per PDF.[/red]"
+        )
+        generator.close()
+        return
+
+    output_dir = notebook_path / "output"
+    if not output:
+        output_dir.mkdir(exist_ok=True)
+
     try:
-        # Process first PDF (for now)
-        pdf = pdfs[0]
-        rprint(f"[blue]Processing:[/blue] {pdf.name}")
+        for pdf in pdfs:
+            rprint(f"[blue]Processing:[/blue] {pdf.name}")
 
-        # Concatenate text from every page (was: only first page!)
-        all_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
-        if not all_text.strip():
-            rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
-            return
+            # Concatenate text from every page (was: only first page!)
+            all_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
+            if not all_text.strip():
+                rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
+                continue
 
-        rprint(f"[dim]Generating {duration}-minute podcast script with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
-        try:
-            script = generator.generate(all_text, title=pdf.stem, duration_minutes=duration, use_full=use_full)
-        except Exception as e:
-            if _is_cloud_error(e):
-                rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
-                rprint(_OLLAMA_CLOUD_HINT)
-            else:
-                rprint(f"[red]✗ Podcast generation failed:[/red] {e}")
-            return
+            rprint(f"[dim]Generating {duration}-minute podcast script with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
+            try:
+                script = generator.generate(all_text, title=pdf.stem, duration_minutes=duration, use_full=use_full)
+            except Exception as e:
+                if _is_cloud_error(e):
+                    rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
+                    rprint(_OLLAMA_CLOUD_HINT)
+                else:
+                    rprint(f"[red]✗ Podcast generation failed:[/red] {e}")
+                continue
 
-        rprint(f"[green]✓ Generated {len(script.segments)} dialogue segments[/green]")
-        
-        # Export based on format
-        if fmt == "markdown":
-            content = script.to_markdown()
-            ext = ".md"
-        elif fmt == "json":
-            content = script.to_json()
-            ext = ".json"
-        
-        # Write to file
-        if output:
-            output_path = Path(output)
-        else:
-            output_dir = notebook_path / "output"
-            output_dir.mkdir(exist_ok=True)
-            output_path = output_dir / f"{pdf.stem}-podcast{ext}"
-        
-        output_path.write_text(content, encoding="utf-8")
-        rprint(f"[green]✓ Podcast script saved to:[/green] {output_path}")
-        
+            rprint(f"[green]✓ Generated {len(script.segments)} dialogue segments[/green]")
+
+            # Export based on format
+            if fmt == "markdown":
+                content = script.to_markdown()
+                ext = ".md"
+            elif fmt == "json":
+                content = script.to_json()
+                ext = ".json"
+
+            # Write to file
+            output_path = Path(output) if output else output_dir / f"{pdf.stem}-podcast{ext}"
+            output_path.write_text(content, encoding="utf-8")
+            rprint(f"[green]✓ Podcast script saved to:[/green] {output_path}")
+
     finally:
         generator.close()
 
@@ -654,8 +684,9 @@ def guide(notebook: str, fmt: str, output: str, questions: int, model: str, use_
     config = Config()
     notebook_path = Path(notebook)
 
-    # Find PDFs
-    pdfs = list(notebook_path.glob("*.pdf"))
+    # Find PDFs. Sort alphabetically for deterministic output order
+    # (pathlib.glob order is filesystem-dependent).
+    pdfs = sorted(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
@@ -745,8 +776,9 @@ def infographic(notebook: str, template: str, output: str, to_png: bool, width: 
     config = Config()
     notebook_path = Path(notebook)
 
-    # Find PDFs
-    pdfs = list(notebook_path.glob("*.pdf"))
+    # Find PDFs. Sort alphabetically for deterministic output order
+    # (pathlib.glob order is filesystem-dependent).
+    pdfs = sorted(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return
@@ -845,8 +877,9 @@ def tables(notebook: str, max_tables: int, fmt: str, output: str, model: str, us
     config = Config()
     notebook_path = Path(notebook)
 
-    # Find PDFs
-    pdfs = list(notebook_path.glob("*.pdf"))
+    # Find PDFs. Sort alphabetically for deterministic output order
+    # (pathlib.glob order is filesystem-dependent).
+    pdfs = sorted(notebook_path.glob("*.pdf"))
     if not pdfs:
         rprint("[red]No PDFs found in notebook[/red]")
         return

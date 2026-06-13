@@ -376,7 +376,7 @@ def test_extract_skips_malformed_entries(extractor):
 
 
 def test_extract_truncates_long_text(extractor):
-    """Text longer than 30000 chars gets truncated"""
+    """Test that long text uses stratified sampling (start + middle + end)."""
     mock_response = Mock()
     mock_response.json.return_value = {
         "response": "[]"
@@ -390,7 +390,10 @@ def test_extract_truncates_long_text(extractor):
         
         call_args = mock_post.call_args
         prompt = call_args[1]["json"]["prompt"]
-        assert "... [truncated]" in prompt
+        # Default mode uses stratified_sample, not the legacy
+        # "... [truncated]" head-cut marker.
+        assert "[... middle of document ...]" in prompt
+        assert "[... end of document ...]" in prompt
         # The prompt itself should be well under 40K chars
         assert len(prompt) < 40000
 

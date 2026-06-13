@@ -165,25 +165,30 @@ def test_mindmap_extractor_extract_no_json(extractor):
 
 
 def test_mindmap_extractor_truncate_long_text(extractor):
-    """Test that long text is truncated"""
+    """Test that long text uses even sampling (10 evenly-spaced windows)."""
     mock_response = Mock()
     mock_response.json.return_value = {
         "response": '{"id": "root", "title": "Test", "children": []}'
     }
     mock_response.raise_for_status = Mock()
-    
+
     # Create very long text
     long_text = "A" * 100000
-    
+
     with patch.object(extractor.client, 'post', return_value=mock_response) as mock_post:
         extractor.extract(long_text, title="Test")
-        
-        # Check that truncated text was sent
+
+        # Check that even sampling was applied (not raw head truncation)
         call_args = mock_post.call_args
         prompt = call_args[1]['json']['prompt']
-        
+
         assert len(prompt) < 60000  # Should be truncated
-        assert "... [truncated]" in prompt
+        # Default mode uses even_sample, which emits "[... section break ...]"
+        # markers between the 10 evenly-spaced windows.
+        assert "[... section break ...]" in prompt
+        # The legacy "[... middle of document ...]" marker is from the
+        # old stratified_sample — should no longer appear in mindmap output.
+        assert "[... middle of document ...]" not in prompt
 
 
 def test_dict_to_node_nested():
