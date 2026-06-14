@@ -14,6 +14,7 @@ from unittest.mock import patch, MagicMock
 
 from shoothighlm.cli import main
 from shoothighlm.mindmap import MindMapNode
+from shoothighlm.llm import LLMUsage
 from shoothighlm.flashcard import Flashcard
 from shoothighlm.podcast import PodcastScript
 
@@ -42,7 +43,8 @@ def test_mindmap_processes_all_pdfs(runner, temp_notebook_with_3_pdfs):
     mock_node = MindMapNode(id="root", title="X", children=[])
     with patch("shoothighlm.mindmap.MindMapExtractor") as mock_class:
         mock_ext = MagicMock()
-        mock_ext.extract.return_value = mock_node
+        from shoothighlm.llm import LLMUsage
+        mock_ext.extract.return_value = (mock_node, LLMUsage())
         mock_class.return_value = mock_ext
         # side_effect=lambda returns a fresh iter on every call, so
         # all 3 PDFs each get "text" extracted.
@@ -75,7 +77,7 @@ def test_mindmap_output_dir_with_multiple_pdfs(runner, temp_notebook_with_3_pdfs
         mock_node = MindMapNode(id="root", title="X", children=[])
         with patch("shoothighlm.mindmap.MindMapExtractor") as mock_class:
             mock_ext = MagicMock()
-            mock_ext.extract.return_value = mock_node
+            mock_ext.extract.return_value = (mock_node, LLMUsage())
             mock_class.return_value = mock_ext
             with patch(
                 "shoothighlm.pdf.parse_pdf",
@@ -109,7 +111,7 @@ def test_mindmap_per_pdf_error_resilience(runner, temp_notebook_with_3_pdfs):
         call_count["n"] += 1
         if call_count["n"] == 2:
             raise RuntimeError("simulated LLM failure")
-        return MindMapNode(id="root", title="X", children=[])
+        return (MindMapNode(id="root", title="X", children=[]), LLMUsage())
 
     with patch("shoothighlm.mindmap.MindMapExtractor") as mock_class:
         mock_ext = MagicMock()
@@ -139,7 +141,7 @@ def test_flashcard_processes_all_pdfs(runner, temp_notebook_with_3_pdfs):
     card = Flashcard(id="c1", question="Q", answer="A")
     with patch("shoothighlm.flashcard.FlashcardGenerator") as mock_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = [card]
+        mock_gen.generate.return_value = ([card], LLMUsage())
         mock_class.return_value = mock_gen
         with patch(
             "shoothighlm.pdf.parse_pdf",
@@ -169,7 +171,7 @@ def test_podcast_processes_all_pdfs(runner, temp_notebook_with_3_pdfs):
     )
     with patch("shoothighlm.podcast.PodcastGenerator") as mock_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = script
+        mock_gen.generate.return_value = (script, LLMUsage())
         mock_class.return_value = mock_gen
         with patch(
             "shoothighlm.pdf.parse_pdf",

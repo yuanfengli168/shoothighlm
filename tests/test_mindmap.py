@@ -139,12 +139,16 @@ def test_mindmap_extractor_extract_mock(extractor):
     mock_response.raise_for_status = Mock()
     
     with patch.object(extractor.client, 'post', return_value=mock_response):
-        result = extractor.extract("Test text", title="Test Document")
-        
+        result, usage = extractor.extract("Test text", title="Test Document")
+
         assert isinstance(result, MindMapNode)
         assert result.title == "Test Document"
         assert len(result.children) == 1
         assert result.children[0].title == "Topic 1"
+        # Token usage is now returned alongside the result
+        assert usage is not None
+        assert isinstance(usage.input_tokens, int)
+        assert isinstance(usage.output_tokens, int)
 
 
 def test_mindmap_extractor_extract_no_json(extractor):
@@ -156,12 +160,14 @@ def test_mindmap_extractor_extract_no_json(extractor):
     mock_response.raise_for_status = Mock()
     
     with patch.object(extractor.client, 'post', return_value=mock_response):
-        result = extractor.extract("Test text", title="Test Document")
-        
-        # Should return fallback node
+        result, usage = extractor.extract("Test text", title="Test Document")
+
+        # Should return fallback node + usage
         assert isinstance(result, MindMapNode)
         assert result.title == "Test Document"
         assert "Failed to parse" in result.notes
+        # Usage is still returned even on failure
+        assert usage is not None
 
 
 def test_mindmap_extractor_truncate_long_text(extractor):
@@ -430,3 +436,154 @@ def test_extract_with_single_book_no_per_book_markers(extractor):
         # for collections.
         assert "=== 书名:" not in prompt
         assert "## Detected sub-books in this collection" not in prompt
+
+
+# ============== HTML rendering tests ==============
+
+from shoothighlm.mindmap import (
+    _default_initial_expand_level,
+    render_mindmap_html,
+)
+
+
+def test_default_initial_expand_level_single_book():
+    """Single book should default to expanding 1 level (chapters visible)."""
+    from shoothighlm.mindmap import MindMapNode
+    tree = MindMapNode(id="root", title="My Book", children=[
+        MindMapNode(id="c1", title="Chapter 1", children=[
+            MindMapNode(id="c1-1", title="Section 1.1"),
+        ]),
+    ])
+    assert _default_initial_expand_level(tree, is_collection=False) == 1
+
+
+def test_default_initial_expand_level_collection():
+    """Collection should default to expanding 2 levels (books + chapters)."""
+    from shoothighlm.mindmap import MindMapNode
+    tree = MindMapNode(id="root", title="Collection", children=[
+        MindMapNode(id="b1", title="Book 1", children=[
+            MindMapNode(id="b1-1", title="Chapter A"),
+        ]),
+        MindMapNode(id="b2", title="Book 2", children=[
+            MindMapNode(id="b2-1", title="Chapter B"),
+        ]),
+    ])
+    assert _default_initial_expand_level(tree, is_collection=True) == 2
+
+
+def test_render_mindmap_html_single_book():
+    """Single-book HTML: frontmatter sets initialExpandLevel: 1, has toolbar."""
+    from shoothighlm.mindmap import MindMapNode
+    tree = MindMapNode(id="root", title="Test Book", children=[
+        MindMapNode(id="c1", title="Chapter 1"),
+    ])
+    html = render_mindmap_html(tree, "Test Book", is_collection=False)
+    # Frontmatter drives the markmap renderer's initialExpandLevel
+    assert "initialExpandLevel: 1" in html
+    # Toolbar: true makes autoloader attach the standard toolbar
+    assert "toolbar: true" in html
+    # The autoloader script tag is present
+    assert "markmap-autoloader" in html
+    # Our custom monkey-patch script is present
+    assert "__mmPatched" in html
+    assert "__markmapInstances" in html
+    # Our custom buttons are registered
+    assert "expandAll" in html
+    assert "collapseAll" in html
+    # The CSS / DOM is in place
+    assert "Test Book" in html
+    assert "<h1>" in html
+    assert "class=\"markmap\"" in html
+
+
+def test_render_mindmap_html_collection():
+    """Collection HTML: frontmatter sets initialExpandLevel: 2."""
+    from shoothighlm.mindmap import MindMapNode
+    tree = MindMapNode(id="root", title="Collection", children=[
+        MindMapNode(id="b1", title="Book 1", children=[
+            MindMapNode(id="b1-1", title="Chapter A"),
+        ]),
+        MindMapNode(id="b2", title="Book 2", children=[
+            MindMapNode(id="b2-1", title="Chapter B"),
+        ]),
+    ])
+    html = render_mindmap_html(tree, "Collection", is_collection=True)
+    assert "initialExpandLevel: 2" in html
+    # Title is in the h1 (escaped, but our test titles have no special chars)
+    assert "Collection" in html
+    # Sub-book titles appear as level-1 markdown headings
+    assert "# Book 1" in html
+    assert "# Book 2" in html
+
+
+def test_render_mindmap_html_special_chars_in_title():
+    """Titles with HTML-special chars should be properly placed (text content)."""
+    from shoothighlm.mindmap import MindMapNode
+    tree = MindMapNode(id="root", title="A & B <test>", children=[])
+    html = render_mindmap_html(tree, "A & B <test>", is_collection=False)
+    # The h1 and title are textual, so we don't need to escape. The
+    # important thing is the html parses and contains the right text.
+    assert "A & B <test>" in html
+
+
+def test_render_mindmap_html_includes_click_handlers():
+    """The custom buttons should have working onClick handlers."""
+    from shoothighlm.mindmap import MindMapNode
+    tree = MindMapNode(id="root", title="X", children=[])
+    html = render_mindmap_html(tree, "X")
+    # The Expand All handler calls setData with initialExpandLevel: -1
+    assert "initialExpandLevel: -1" in html
+    # The Collapse All handler calls setData with initialExpandLevel: 0
+    assert "initialExpandLevel: 0" in html
+    # Both handlers call mm.fit() to re-center the viewport
+    assert "mm.fit()" in html
+
+
+def test_render_mindmap_html_toolbar_items_order():
+    """The toolbar.setItems call should put our buttons first, then defaults."""
+    from shoothighlm.mindmap import MindMapNode
+    tree = MindMapNode(id="root", title="X", children=[])
+    html = render_mindmap_html(tree, "X")
+    # Verify the setItems call lists our buttons first
+    assert '"expandAll"' in html
+    assert '"collapseAll"' in html
+    # Then the standard markmap controls
+    assert '"zoomIn"' in html
+    assert '"zoomOut"' in html
+    assert '"fit"' in html
+    assert '"recurse"' in html
+    assert '"dark"' in html
+
+
+def test_render_mindmap_html_idempotent_patching():
+    """The monkey-patch must be idempotent — running onReady twice should
+    not double-register buttons."""
+    from shoothighlm.mindmap import MindMapNode
+    tree = MindMapNode(id="root", title="X", children=[])
+    html = render_mindmap_html(tree, "X")
+    # The __mmPatched flag is set before patching
+    assert "window.__mmPatched = true" in html
+    # And we check it before patching again
+    assert "if (window.__mmPatched) return" in html
+
+
+def test_render_mindmap_html_has_dark_mode_css():
+    """Dark mode should set body / h1 / .markmap backgrounds and text colors.
+
+    The markmap dark-mode toggle adds `.markmap-dark` to <html>. Our
+    CSS rules need to respond to that class so the page background,
+    h1 text, and the markmap container all flip to dark. Without
+    these rules, the markmap's internal text color flips to white
+    but the surrounding surfaces stay white — producing white text
+    on white background (invisible).
+    """
+    from shoothighlm.mindmap import MindMapNode
+    tree = MindMapNode(id="root", title="X", children=[])
+    html = render_mindmap_html(tree, "X")
+    # Light theme defaults: explicit white background on html/body
+    assert "background: #ffffff" in html
+    # Dark theme: html.markmap-dark flips body + markmap + h1
+    assert "html.markmap-dark" in html
+    assert "background: #1a1b26" in html
+    # The h1 should also have an explicit color (not inherited)
+    assert "h1" in html and "color" in html

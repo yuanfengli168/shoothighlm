@@ -7,6 +7,7 @@ import tempfile
 from unittest.mock import patch, MagicMock
 from shoothighlm.cli import main
 from shoothighlm.podcast import PodcastScript
+from shoothighlm.llm import LLMUsage
 
 
 @pytest.fixture
@@ -44,7 +45,7 @@ def test_podcast_markdown_output(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.podcast.PodcastGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_script
+        mock_gen.generate.return_value = (mock_script, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -72,7 +73,7 @@ def test_podcast_json_output(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.podcast.PodcastGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_script
+        mock_gen.generate.return_value = (mock_script, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -100,7 +101,7 @@ def test_podcast_custom_duration(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.podcast.PodcastGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_script
+        mock_gen.generate.return_value = (mock_script, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -128,7 +129,7 @@ def test_podcast_custom_hosts(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.podcast.PodcastGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_script
+        mock_gen.generate.return_value = (mock_script, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -160,7 +161,7 @@ def test_podcast_custom_output_path(runner, temp_notebook_with_pdf):
         
         with patch('shoothighlm.podcast.PodcastGenerator') as mock_gen_class:
             mock_gen = MagicMock()
-            mock_gen.generate.return_value = mock_script
+            mock_gen.generate.return_value = (mock_script, LLMUsage())
             mock_gen_class.return_value = mock_gen
             
             with patch('shoothighlm.pdf.parse_pdf') as mock_parse:

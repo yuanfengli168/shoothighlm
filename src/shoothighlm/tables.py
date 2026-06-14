@@ -10,10 +10,11 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from .sampling import stratified_sample, head_sample
+from .llm import LLMUsage, call_ollama
 
 
 @dataclass
@@ -136,7 +137,7 @@ class TableExtractor:
         max_tables: int = 3,
         source: str = "",
         use_full: bool = False,
-    ) -> List[DataTable]:
+    ) -> Tuple[List[DataTable], "LLMUsage"]:
         """Extract up to `max_tables` data tables from text.
 
         Args:
@@ -147,13 +148,15 @@ class TableExtractor:
                 higher-fidelity extraction on large documents.
 
         Returns:
-            List of DataTable objects (may be empty)
+            (tables, usage) tuple. `tables` is a list of DataTable
+            objects (may be empty); `usage` is LLMUsage with token
+            counts.
 
         Raises:
             RuntimeError: If LLM call fails or returns invalid JSON
         """
         if not text or not text.strip():
-            return []
+            return [], LLMUsage()
 
         # Truncate very long text. Default 12K uses stratified sampling
         # (start + middle + end) so long books don't just sample the
@@ -194,26 +197,21 @@ class TableExtractor:
 ## JSON Output:"""
         
         try:
-            response = self.client.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.chat_model,
-                    "prompt": prompt,
-                    "stream": False,
-                },
+            output, usage = call_ollama(
+                base_url=self.base_url,
+                model=self.chat_model,
+                prompt=prompt,
+                client=self.client,
             )
-            response.raise_for_status()
         except httpx.HTTPError as e:
             raise RuntimeError(f"LLM request failed: {e}") from e
-        
-        raw = response.json().get("response", "")
-        
+
         try:
-            data = self._extract_json(raw)
+            data = self._extract_json(output)
         except (json.JSONDecodeError, ValueError) as e:
             raise RuntimeError(
                 f"LLM returned invalid JSON for tables: {e}\n"
-                f"Raw response: {raw[:500]}"
+                f"Raw response: {output[:500]}"
             ) from e
         
         if not isinstance(data, list):
@@ -244,4 +242,4 @@ class TableExtractor:
                 continue
             valid_tables.append(table)
         
-        return valid_tables[:max_tables]
+        return valid_tables[:max_tables], usage

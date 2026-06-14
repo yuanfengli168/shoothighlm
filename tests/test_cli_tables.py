@@ -7,6 +7,7 @@ import tempfile
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 from shoothighlm.cli import main
+from shoothighlm.llm import LLMUsage
 from shoothighlm.tables import DataTable
 
 
@@ -53,7 +54,7 @@ def test_tables_default_markdown(runner, temp_notebook, sample_tables):
     """Default invocation: markdown format, 3 max tables"""
     with patch('shoothighlm.tables.TableExtractor') as mock_class:
         mock_ext = MagicMock()
-        mock_ext.extract.return_value = sample_tables
+        mock_ext.extract.return_value = (sample_tables, LLMUsage())
         mock_class.return_value = mock_ext
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -80,7 +81,7 @@ def test_tables_custom_output(runner, temp_notebook, sample_tables):
         
         with patch('shoothighlm.tables.TableExtractor') as mock_class:
             mock_ext = MagicMock()
-            mock_ext.extract.return_value = sample_tables
+            mock_ext.extract.return_value = (sample_tables, LLMUsage())
             mock_class.return_value = mock_ext
             
             with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -101,7 +102,7 @@ def test_tables_csv_format(runner, temp_notebook, sample_tables):
     """CSV format outputs first table only"""
     with patch('shoothighlm.tables.TableExtractor') as mock_class:
         mock_ext = MagicMock()
-        mock_ext.extract.return_value = sample_tables
+        mock_ext.extract.return_value = (sample_tables, LLMUsage())
         mock_class.return_value = mock_ext
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -124,7 +125,7 @@ def test_tables_csv_format(runner, temp_notebook, sample_tables):
 def test_tables_json_format(runner, temp_notebook, sample_tables):
     with patch('shoothighlm.tables.TableExtractor') as mock_class:
         mock_ext = MagicMock()
-        mock_ext.extract.return_value = sample_tables
+        mock_ext.extract.return_value = (sample_tables, LLMUsage())
         mock_class.return_value = mock_ext
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -146,7 +147,7 @@ def test_tables_json_format(runner, temp_notebook, sample_tables):
 def test_tables_html_format(runner, temp_notebook, sample_tables):
     with patch('shoothighlm.tables.TableExtractor') as mock_class:
         mock_ext = MagicMock()
-        mock_ext.extract.return_value = sample_tables
+        mock_ext.extract.return_value = (sample_tables, LLMUsage())
         mock_class.return_value = mock_ext
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -171,7 +172,7 @@ def test_tables_max_tables_flag(runner, temp_notebook, sample_tables):
     """--max flag is passed to extractor"""
     with patch('shoothighlm.tables.TableExtractor') as mock_class:
         mock_ext = MagicMock()
-        mock_ext.extract.return_value = sample_tables[:1]
+        mock_ext.extract.return_value = (sample_tables, LLMUsage())[:1]
         mock_class.return_value = mock_ext
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -198,8 +199,8 @@ def test_tables_multiple_pdfs(runner, sample_tables):
             mock_ext = MagicMock()
             # Different tables per PDF
             mock_ext.extract.side_effect = [
-                [sample_tables[0]],  # from a.pdf
-                [sample_tables[1]],  # from b.pdf
+                ([sample_tables[0]], LLMUsage()),  # from a.pdf
+                ([sample_tables[1]], LLMUsage()),  # from b.pdf
             ]
             mock_class.return_value = mock_ext
             
@@ -259,7 +260,7 @@ def test_tables_no_tables_found(runner, temp_notebook):
     """LLM returns empty list"""
     with patch('shoothighlm.tables.TableExtractor') as mock_class:
         mock_ext = MagicMock()
-        mock_ext.extract.return_value = []
+        mock_ext.extract.return_value = ([], LLMUsage())
         mock_class.return_value = mock_ext
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -276,7 +277,7 @@ def test_tables_closes_extractor(runner, temp_notebook, sample_tables):
     """extractor.close() is called even on success"""
     with patch('shoothighlm.tables.TableExtractor') as mock_class:
         mock_ext = MagicMock()
-        mock_ext.extract.return_value = sample_tables
+        mock_ext.extract.return_value = (sample_tables, LLMUsage())
         mock_class.return_value = mock_ext
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:

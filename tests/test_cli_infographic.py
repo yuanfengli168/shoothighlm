@@ -7,6 +7,7 @@ import tempfile
 from unittest.mock import patch, MagicMock
 from shoothighlm.cli import main
 from shoothighlm.infographic import Infographic
+from shoothighlm.llm import LLMUsage
 
 
 @pytest.fixture
@@ -37,7 +38,7 @@ def test_infographic_default_template(runner, temp_notebook, mock_info):
     """Test infographic with default summary_card template"""
     with patch('shoothighlm.infographic.InfographicGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_info
+        mock_gen.generate.return_value = (mock_info, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -53,7 +54,7 @@ def test_infographic_custom_template(runner, temp_notebook, mock_info):
     """Test infographic with custom template"""
     with patch('shoothighlm.infographic.InfographicGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_info
+        mock_gen.generate.return_value = (mock_info, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -77,7 +78,7 @@ def test_infographic_custom_output(runner, temp_notebook, mock_info):
         
         with patch('shoothighlm.infographic.InfographicGenerator') as mock_gen_class:
             mock_gen = MagicMock()
-            mock_gen.generate.return_value = mock_info
+            mock_gen.generate.return_value = (mock_info, LLMUsage())
             mock_gen_class.return_value = mock_gen
             
             with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -98,7 +99,7 @@ def test_infographic_png_flag(runner, temp_notebook, mock_info):
     """Test infographic with --png flag triggers PNG render"""
     with patch('shoothighlm.infographic.InfographicGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_info
+        mock_gen.generate.return_value = (mock_info, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -120,7 +121,7 @@ def test_infographic_png_render_import_error(runner, temp_notebook, mock_info):
     """Test infographic handles missing playwright gracefully"""
     with patch('shoothighlm.infographic.InfographicGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_info
+        mock_gen.generate.return_value = (mock_info, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -142,7 +143,7 @@ def test_infographic_png_custom_dimensions(runner, temp_notebook, mock_info):
     """Test infographic with custom PNG dimensions"""
     with patch('shoothighlm.infographic.InfographicGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_info
+        mock_gen.generate.return_value = (mock_info, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -210,7 +211,7 @@ def test_infographic_passes_sources(runner, temp_notebook, mock_info):
     """Test that sources from PDFs are passed to generator"""
     with patch('shoothighlm.infographic.InfographicGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_info
+        mock_gen.generate.return_value = (mock_info, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf', side_effect=[

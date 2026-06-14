@@ -1,10 +1,11 @@
 """Notebook Guide generation — auto-summary, topics, and suggested questions"""
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass, field
 import json
 import httpx
 from .sampling import stratified_sample, head_sample
+from .llm import LLMUsage, call_ollama
 
 
 @dataclass
@@ -89,7 +90,7 @@ class GuideGenerator:
         sources: List[str] = None,
         num_questions: int = 5,
         use_full: bool = False,
-    ) -> NotebookGuide:
+    ) -> Tuple[NotebookGuide, LLMUsage]:
         """
         Generate a notebook guide from text.
 
@@ -102,7 +103,8 @@ class GuideGenerator:
                 higher-fidelity generation on large documents.
 
         Returns:
-            NotebookGuide object
+            (guide, usage) tuple. `guide` is a NotebookGuide object;
+            `usage` is LLMUsage with token counts.
         """
         sources = sources or []
 
@@ -142,20 +144,14 @@ class GuideGenerator:
 
 ## Notebook Guide JSON:
 """
-        
-        response = self.client.post(
-            f"{self.base_url}/api/generate",
-            json={
-                "model": self.chat_model,
-                "prompt": prompt,
-                "stream": False,
-            },
+
+        output, usage = call_ollama(
+            base_url=self.base_url,
+            model=self.chat_model,
+            prompt=prompt,
+            client=self.client,
         )
-        response.raise_for_status()
-        
-        # Parse JSON from response
-        output = response.json()["response"]
-        
+
         # Extract JSON from markdown code blocks
         if "```json" in output:
             json_str = output.split("```json")[1].split("```")[0].strip()
@@ -163,24 +159,30 @@ class GuideGenerator:
             json_str = output.split("```")[1].split("```")[0].strip()
         else:
             json_str = output.strip()
-        
+
         try:
             data = json.loads(json_str)
-            return NotebookGuide(
-                title=title,
-                summary=data.get("summary", ""),
-                key_topics=data.get("key_topics", []),
-                suggested_questions=data.get("suggested_questions", []),
-                sources=sources,
+            return (
+                NotebookGuide(
+                    title=title,
+                    summary=data.get("summary", ""),
+                    key_topics=data.get("key_topics", []),
+                    suggested_questions=data.get("suggested_questions", []),
+                    sources=sources,
+                ),
+                usage,
             )
         except json.JSONDecodeError:
-            # Fallback: return minimal guide
-            return NotebookGuide(
-                title=title,
-                summary="Failed to generate guide from documents.",
-                key_topics=[],
-                suggested_questions=[],
-                sources=sources,
+            # Fallback: return minimal guide (and the usage we have)
+            return (
+                NotebookGuide(
+                    title=title,
+                    summary="Failed to generate guide from documents.",
+                    key_topics=[],
+                    suggested_questions=[],
+                    sources=sources,
+                ),
+                usage,
             )
     
     def close(self):

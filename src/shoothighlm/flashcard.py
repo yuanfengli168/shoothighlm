@@ -1,10 +1,11 @@
 """Flashcard generation from PDF content"""
 
-from typing import List, Dict, Any
+from typing import List, Tuple, Dict, Any
 from dataclasses import dataclass
 import json
 import httpx
 from .sampling import stratified_sample, head_sample
+from .llm import LLMUsage, call_ollama
 
 
 @dataclass
@@ -74,7 +75,7 @@ class FlashcardGenerator:
         num_cards: int = 10,
         source: str = "",
         use_full: bool = False,
-    ) -> List[Flashcard]:
+    ) -> Tuple[List[Flashcard], LLMUsage]:
         """
         Generate flashcards from text.
 
@@ -86,7 +87,8 @@ class FlashcardGenerator:
                 higher-fidelity generation on large documents.
 
         Returns:
-            List of Flashcard objects
+            (cards, usage) tuple. `cards` is a list of Flashcard
+            objects; `usage` is LLMUsage with token counts.
         """
         # Truncate if too long. Default 12K uses stratified sampling
         # (start + middle + end) so long books don't just sample the
@@ -124,20 +126,14 @@ class FlashcardGenerator:
 
 ## Flashcards JSON:
 """
-        
-        response = self.client.post(
-            f"{self.base_url}/api/generate",
-            json={
-                "model": self.chat_model,
-                "prompt": prompt,
-                "stream": False,
-            },
+
+        output, usage = call_ollama(
+            base_url=self.base_url,
+            model=self.chat_model,
+            prompt=prompt,
+            client=self.client,
         )
-        response.raise_for_status()
-        
-        # Parse JSON from response
-        output = response.json()["response"]
-        
+
         # Extract JSON from markdown code blocks
         if "```json" in output:
             json_str = output.split("```json")[1].split("```")[0].strip()
@@ -145,10 +141,10 @@ class FlashcardGenerator:
             json_str = output.split("```")[1].split("```")[0].strip()
         else:
             json_str = output.strip()
-        
+
         try:
             cards_data = json.loads(json_str)
-            return [
+            cards = [
                 Flashcard(
                     id=card.get("id", f"card-{i}"),
                     question=card.get("question", ""),
@@ -158,9 +154,10 @@ class FlashcardGenerator:
                 )
                 for i, card in enumerate(cards_data)
             ]
+            return cards, usage
         except json.JSONDecodeError:
-            # Fallback: return empty list
-            return []
+            # Fallback: return empty list (and the usage we still have)
+            return [], usage
     
     def close(self):
         """Close HTTP client"""

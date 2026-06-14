@@ -396,7 +396,9 @@ def mindmap(notebook: str, fmt: str, output: str, output_dir: str, name_pattern:
             rprint(f"  Extracted {len(all_text):,} chars")
             rprint(f"[dim]Extracting mind map with model {chat_model} (prompt: {'50K' if use_full else '25K'} chars)...[/dim]")
             try:
-                mindmap_tree = extractor.extract(all_text, title=pdf.stem, use_full=use_full)
+                mindmap_tree, _usage = extractor.extract(
+                    all_text, title=pdf.stem, use_full=use_full
+                )
             except Exception as e:
                 if _is_cloud_error(e):
                     rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
@@ -418,28 +420,27 @@ def mindmap(notebook: str, fmt: str, output: str, output_dir: str, name_pattern:
                 content = json.dumps(mindmap_tree.to_dict(), indent=2, ensure_ascii=False)
                 ext = ".json"
             elif fmt == "html":
-                # Generate Markmap HTML
-                md_content = mindmap_tree.to_markdown()
-                content = f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>{pdf.stem} - Mind Map</title>
-  <script src="https://cdn.jsdelivr.net/npm/markmap-autoloader@latest"></script>
-  <style>
-    body {{ margin: 0; padding: 20px; }}
-    .markmap {{ width: 100%; height: 90vh; }}
-  </style>
-</head>
-<body>
-  <h1>{pdf.stem}</h1>
-  <div class="markmap">
-
-{md_content}
-
-  </div>
-</body>
-</html>"""
+                # Generate Markmap HTML with the custom toolbar (Expand
+                # All / Collapse All buttons + the standard markmap
+                # controls). The helper takes care of:
+                #   - The right initialExpandLevel (1 for single-book,
+                #     2 for multi-book collections)
+                #   - The markmap-autoloader + toolbar
+                #   - The monkey-patch that captures the markmap
+                #     instance so the custom buttons can re-render
+                #     with new initialExpandLevel values
+                from .mindmap import _detect_sub_books, render_mindmap_html
+                # Detect sub-books in the original (un-sampled) text
+                # to decide if this is a multi-book collection.
+                sub_books = _detect_sub_books(all_text)
+                is_collection = (
+                    len(sub_books) > 1 and sub_books[0][0] != "__whole_book__"
+                )
+                content = render_mindmap_html(
+                    mindmap_tree,
+                    title=pdf.stem,
+                    is_collection=is_collection,
+                )
                 ext = ".html"
 
             # Resolve output path using the shared helper
@@ -504,7 +505,7 @@ def flashcard(notebook: str, num: int, fmt: str, output: str, output_dir: str, n
 
             rprint(f"[dim]Generating {num} flashcards with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
             try:
-                cards = generator.generate(all_text, num_cards=num, source=pdf.name, use_full=use_full)
+                cards, _usage = generator.generate(all_text, num_cards=num, source=pdf.name, use_full=use_full)
             except Exception as e:
                 if _is_cloud_error(e):
                     rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
@@ -603,7 +604,7 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, output_dir: str
 
             rprint(f"[dim]Generating {duration}-minute podcast script with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
             try:
-                script = generator.generate(all_text, title=pdf.stem, duration_minutes=duration, use_full=use_full)
+                script, _usage = generator.generate(all_text, title=pdf.stem, duration_minutes=duration, use_full=use_full)
             except Exception as e:
                 if _is_cloud_error(e):
                     rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
@@ -789,7 +790,7 @@ def guide(notebook: str, fmt: str, output: str, output_dir: str, name_pattern: s
 
         rprint(f"[dim]Generating guide with {questions} suggested questions (model: {chat_model}, prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
         try:
-            notebook_guide = generator.generate(
+            notebook_guide, _usage = generator.generate(
                 all_text,
                 title=notebook_path.name,
                 sources=sources,
@@ -887,7 +888,7 @@ def infographic(notebook: str, template: str, output: str, output_dir: str, name
 
         rprint(f"[dim]Generating {template} infographic with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
         try:
-            info = generator.generate(
+            info, _usage = generator.generate(
                 all_text,
                 template=template,
                 title=notebook_path.name,
@@ -987,7 +988,7 @@ def tables(notebook: str, max_tables: int, fmt: str, output: str, output_dir: st
 
             rprint(f"[dim]Extracting up to {max_tables} tables (model: {chat_model}, prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
             try:
-                tables_found = extractor.extract(all_text, max_tables=max_tables, source=pdf.name, use_full=use_full)
+                tables_found, _usage = extractor.extract(all_text, max_tables=max_tables, source=pdf.name, use_full=use_full)
             except (RuntimeError, httpx.HTTPError) as e:
                 if _is_cloud_error(e):
                     rprint(f"[red]✗ Cloud LLM error for {pdf.name}:[/red] {e}")

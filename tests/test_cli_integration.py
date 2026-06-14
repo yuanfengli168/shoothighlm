@@ -8,6 +8,7 @@ from unittest.mock import patch, MagicMock
 from shoothighlm.cli import main
 from shoothighlm.mindmap import MindMapNode
 from shoothighlm.flashcard import Flashcard
+from shoothighlm.llm import LLMUsage
 
 
 @pytest.fixture
@@ -38,7 +39,7 @@ def test_mindmap_markdown_output(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.mindmap.MindMapExtractor') as mock_extractor_class:
         mock_extractor = MagicMock()
-        mock_extractor.extract.return_value = mock_node
+        mock_extractor.extract.return_value = (mock_node, LLMUsage())
         mock_extractor_class.return_value = mock_extractor
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -56,7 +57,7 @@ def test_mindmap_opml_output(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.mindmap.MindMapExtractor') as mock_extractor_class:
         mock_extractor = MagicMock()
-        mock_extractor.extract.return_value = mock_node
+        mock_extractor.extract.return_value = (mock_node, LLMUsage())
         mock_extractor_class.return_value = mock_extractor
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -74,7 +75,7 @@ def test_mindmap_html_output(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.mindmap.MindMapExtractor') as mock_extractor_class:
         mock_extractor = MagicMock()
-        mock_extractor.extract.return_value = mock_node
+        mock_extractor.extract.return_value = (mock_node, LLMUsage())
         mock_extractor_class.return_value = mock_extractor
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -97,7 +98,7 @@ def test_mindmap_json_output(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.mindmap.MindMapExtractor') as mock_extractor_class:
         mock_extractor = MagicMock()
-        mock_extractor.extract.return_value = mock_node
+        mock_extractor.extract.return_value = (mock_node, LLMUsage())
         mock_extractor_class.return_value = mock_extractor
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -118,7 +119,7 @@ def test_mindmap_custom_output_path(runner, temp_notebook_with_pdf):
 
         with patch('shoothighlm.mindmap.MindMapExtractor') as mock_extractor_class:
             mock_extractor = MagicMock()
-            mock_extractor.extract.return_value = mock_node
+            mock_extractor.extract.return_value = (mock_node, LLMUsage())
             mock_extractor_class.return_value = mock_extractor
             
             with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -159,7 +160,7 @@ def test_flashcard_markdown_output(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.flashcard.FlashcardGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_cards
+        mock_gen.generate.return_value = (mock_cards, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -183,7 +184,7 @@ def test_flashcard_csv_output(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.flashcard.FlashcardGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_cards
+        mock_gen.generate.return_value = (mock_cards, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -207,7 +208,7 @@ def test_flashcard_json_output(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.flashcard.FlashcardGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_cards
+        mock_gen.generate.return_value = (mock_cards, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -229,7 +230,7 @@ def test_flashcard_custom_num(runner, temp_notebook_with_pdf):
     
     with patch('shoothighlm.flashcard.FlashcardGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_cards
+        mock_gen.generate.return_value = (mock_cards, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -254,7 +255,7 @@ def test_flashcard_custom_output_path(runner, temp_notebook_with_pdf):
 
         with patch('shoothighlm.flashcard.FlashcardGenerator') as mock_gen_class:
             mock_gen = MagicMock()
-            mock_gen.generate.return_value = mock_cards
+            mock_gen.generate.return_value = (mock_cards, LLMUsage())
             mock_gen_class.return_value = mock_gen
             
             with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -278,7 +279,7 @@ def test_flashcard_no_cards_generated(runner, temp_notebook_with_pdf):
     """Test flashcard when generator returns empty list"""
     with patch('shoothighlm.flashcard.FlashcardGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = []
+        mock_gen.generate.return_value = ([], LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:

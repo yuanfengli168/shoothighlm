@@ -141,7 +141,7 @@ def test_generator_generate_mock(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, 'post', return_value=mock_response):
-        guide = generator.generate(
+        guide, _usage = generator.generate(
             "Test text about AI and ML",
             title="AI Notebook",
             sources=["ai.pdf", "ml.pdf"],
@@ -165,7 +165,7 @@ def test_generator_generate_no_code_block(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, 'post', return_value=mock_response):
-        guide = generator.generate("Some text", title="Test")
+        guide, _usage = generator.generate("Some text", title="Test")
         
         assert guide.summary == "Direct JSON."
         assert guide.key_topics == ["X"]
@@ -180,7 +180,7 @@ def test_generator_generate_invalid_json(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, 'post', return_value=mock_response):
-        guide = generator.generate("Some text", title="Test", sources=["x.pdf"])
+        guide, _usage = generator.generate("Some text", title="Test", sources=["x.pdf"])
         
         # Should return fallback guide
         assert guide.title == "Test"
@@ -255,7 +255,7 @@ def test_generator_default_sources_empty(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, 'post', return_value=mock_response):
-        guide = generator.generate("text", title="T")
+        guide, _usage = generator.generate("text", title="T")
         
         assert guide.sources == []
 

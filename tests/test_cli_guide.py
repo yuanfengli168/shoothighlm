@@ -7,6 +7,7 @@ import tempfile
 from unittest.mock import patch, MagicMock
 from shoothighlm.cli import main
 from shoothighlm.guide import NotebookGuide
+from shoothighlm.llm import LLMUsage
 
 
 @pytest.fixture
@@ -48,7 +49,7 @@ def test_guide_markdown_output(runner, temp_notebook_with_pdfs, mock_guide):
     """Test guide command with Markdown output (default)"""
     with patch('shoothighlm.guide.GuideGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_guide
+        mock_gen.generate.return_value = (mock_guide, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -64,7 +65,7 @@ def test_guide_json_output(runner, temp_notebook_with_pdfs, mock_guide):
     """Test guide command with JSON output"""
     with patch('shoothighlm.guide.GuideGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_guide
+        mock_gen.generate.return_value = (mock_guide, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -84,7 +85,7 @@ def test_guide_custom_questions_count(runner, temp_notebook_with_pdfs, mock_guid
     """Test guide command with custom number of questions"""
     with patch('shoothighlm.guide.GuideGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_guide
+        mock_gen.generate.return_value = (mock_guide, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -122,7 +123,7 @@ def test_guide_custom_output_path(runner, temp_notebook_with_single_pdf, mock_gu
 
         with patch('shoothighlm.guide.GuideGenerator') as mock_gen_class:
             mock_gen = MagicMock()
-            mock_gen.generate.return_value = mock_guide
+            mock_gen.generate.return_value = (mock_guide, LLMUsage())
             mock_gen_class.return_value = mock_gen
 
             with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -150,7 +151,7 @@ def test_guide_output_dir_flag(runner, temp_notebook_with_pdfs, mock_guide):
 
         with patch('shoothighlm.guide.GuideGenerator') as mock_gen_class:
             mock_gen = MagicMock()
-            mock_gen.generate.return_value = mock_guide
+            mock_gen.generate.return_value = (mock_guide, LLMUsage())
             mock_gen_class.return_value = mock_gen
 
             with patch('shoothighlm.pdf.parse_pdf', side_effect=[
@@ -179,7 +180,7 @@ def test_guide_custom_name_pattern(runner, temp_notebook_with_single_pdf, mock_g
 
         with patch('shoothighlm.guide.GuideGenerator') as mock_gen_class:
             mock_gen = MagicMock()
-            mock_gen.generate.return_value = mock_guide
+            mock_gen.generate.return_value = (mock_guide, LLMUsage())
             mock_gen_class.return_value = mock_gen
 
             with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
@@ -223,7 +224,7 @@ def test_guide_combines_multiple_pdfs(runner, temp_notebook_with_pdfs, mock_guid
     """Test that guide combines text from all PDFs and tracks sources"""
     with patch('shoothighlm.guide.GuideGenerator') as mock_gen_class:
         mock_gen = MagicMock()
-        mock_gen.generate.return_value = mock_guide
+        mock_gen.generate.return_value = (mock_guide, LLMUsage())
         mock_gen_class.return_value = mock_gen
         
         # parse_pdf is called once per PDF; return text for each

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import json
 import httpx
 from .sampling import even_sample, head_sample
+from .llm import LLMUsage, call_ollama
 
 
 def _parse_table_of_contents(text: str) -> List[str]:
@@ -370,7 +371,8 @@ class MindMapExtractor:
                 enumerating the whole structure of a long book).
 
         Returns:
-            MindMapNode tree structure
+            (MindMapNode, LLMUsage) tuple. The LLMUsage has the
+            input/output token counts for this extraction.
         """
         # Default 25K chars (~6K tokens) with even sampling — covers
         # more of the book than the old 12K default without paying the
@@ -498,20 +500,14 @@ top-level node.
 
 ## Mind Map JSON:
 """
-        
-        response = self.client.post(
-            f"{self.base_url}/api/generate",
-            json={
-                "model": self.chat_model,
-                "prompt": prompt,
-                "stream": False,
-            },
+
+        output, usage = call_ollama(
+            base_url=self.base_url,
+            model=self.chat_model,
+            prompt=prompt,
+            client=self.client,
         )
-        response.raise_for_status()
-        
-        # Parse JSON from response
-        output = response.json()["response"]
-        
+
         # Extract JSON from markdown code blocks if present
         if "```json" in output:
             json_str = output.split("```json")[1].split("```")[0].strip()
@@ -519,17 +515,20 @@ top-level node.
             json_str = output.split("```")[1].split("```")[0].strip()
         else:
             json_str = output.strip()
-        
+
         try:
             data = json.loads(json_str)
-            return self._dict_to_node(data)
+            return self._dict_to_node(data), usage
         except json.JSONDecodeError as e:
             # Fallback: create simple structure
-            return MindMapNode(
-                id="root",
-                title=title,
-                notes=f"Failed to parse mind map: {e}\n\nOutput was:\n{output[:500]}",
-                children=[],
+            return (
+                MindMapNode(
+                    id="root",
+                    title=title,
+                    notes=f"Failed to parse mind map: {e}\n\nOutput was:\n{output[:500]}",
+                    children=[],
+                ),
+                usage,
             )
     
     def _dict_to_node(self, data: Dict[str, Any], parent_id: str = "") -> MindMapNode:
@@ -554,3 +553,259 @@ top-level node.
     def close(self):
         """Close HTTP client"""
         self.client.close()
+
+
+
+# ============== HTML rendering (Markmap + custom toolbar) ==============
+
+
+def _default_initial_expand_level(tree, is_collection):
+    """Decide how many levels to expand on initial render.
+
+    The default markmap behavior is `initialExpandLevel: -1` (expand
+    all). For a 100+ node mind map that's a wall of text — the user
+    can't see the structure.
+
+    We pick a sensible default based on the tree shape:
+
+    - Collection (multi-book): expand level 2 by default. Level 1
+      shows the book titles, level 2 shows the chapters. Users can
+      click "Expand all" to see the full depth.
+
+    - Single book: expand level 1 by default. Level 1 shows the
+      chapter / part titles.
+
+    Returns the initialExpandLevel value (positive = expand up to
+    that depth; -1 = expand all).
+    """
+    if is_collection:
+        return 2
+    return 1
+
+
+# JavaScript that registers custom Expand All / Collapse All
+# toolbar buttons.
+#
+# Strategy: We MONKEY-PATCH `markmap.Markmap.create` BEFORE the
+# autoloader runs. The autoloader's `render()` function calls
+# `Markmap.create(svg, ...)` and uses the resulting markmap instance
+# internally — but it does NOT expose that instance on `window` or
+# on the DOM element. So we wrap `Markmap.create` to capture every
+# instance in a global registry (`window.__markmapInstances`).
+#
+# Then `onReady` (which fires AFTER the autoloader has set up the
+# toolbar) can iterate that registry, find the existing toolbar DOM
+# on each `.markmap` container, remove it, and re-attach a new
+# toolbar with our custom buttons.
+_TOOLBAR_INIT_JS = r"""
+  <script>
+    // Pre-autoloader setup: monkey-patch Markmap.create to capture
+    // every markmap instance the autoloader creates. We don't have
+    // access to the instance otherwise (autoloader's render() is
+    // scope-local).
+    (function () {
+      const tryPatch = function () {
+        if (!window.markmap || !window.markmap.Markmap) {
+          // Library not loaded yet — try again in 50ms.
+          setTimeout(tryPatch, 50);
+          return;
+        }
+        if (window.__mmPatched) return; // idempotent
+        window.__mmPatched = true;
+        const Original = window.markmap.Markmap.create;
+        window.markmap.Markmap.create = function (svg, opts, data) {
+          const mm = Original.call(this, svg, opts, data);
+          // Stash the instance in a global registry.
+          window.__markmapInstances = window.__markmapInstances || [];
+          window.__markmapInstances.push(mm);
+          return mm;
+        };
+      };
+      tryPatch();
+    })();
+  </script>
+  <script>
+    // After the autoloader has loaded markmap + dependencies AND
+    // created the markmap instance + attached the toolbar, our
+    // onReady runs. We replace the toolbar with a new one that
+    // includes our custom Expand All / Collapse All buttons.
+    (function () {
+      const onReady = function () {
+        const instances = (window.__markmapInstances || []);
+        // Belt-and-suspenders: also check window.mm (set by
+        // markmap-render, not autoloader, but harmless).
+        if (!instances.length && window.mm) {
+          instances.push(window.mm);
+        }
+        if (!instances.length || !window.markmap || !window.markmap.Toolbar) {
+          return;
+        }
+        const Toolbar = window.markmap.Toolbar;
+        instances.forEach(function (mm) {
+          // The autoloader appended a `.mm-toolbar` element as a
+          // child of the .markmap container. Find and remove it.
+          const container = mm.svg.node().parentNode;
+          const existingToolbar = container.querySelector(".mm-toolbar");
+          if (existingToolbar) {
+            existingToolbar.remove();
+          }
+          // Build a new toolbar attached to this markmap.
+          const toolbar = Toolbar.create(mm);
+          // Register our custom buttons.
+          //   - "Expand all": re-render with initialExpandLevel: -1
+          //     (markmap's "all" sentinel value).
+          //   - "Collapse all": re-render with initialExpandLevel: 0
+          //     (only the root is visible; user clicks to expand).
+          toolbar.register({
+            id: "expandAll",
+            title: "Expand all",
+            content: Toolbar.icon(
+              "M12 5l-7 7h4v6h6v-6h4z M4 18h16v2h-16z"
+            ),
+            onClick: function () {
+              const data = mm.state.data;
+              if (!data) return;
+              mm.setData(data, { initialExpandLevel: -1 }).then(function () {
+                mm.fit();
+              });
+            },
+          });
+          toolbar.register({
+            id: "collapseAll",
+            title: "Collapse all",
+            content: Toolbar.icon(
+              "M12 19l7-7h-4v-6h-6v6h-4z M4 2h16v2h-16z"
+            ),
+            onClick: function () {
+              const data = mm.state.data;
+              if (!data) return;
+              mm.setData(data, { initialExpandLevel: 0 }).then(function () {
+                mm.fit();
+              });
+            },
+          });
+          // Replace items to put our custom buttons first.
+          toolbar.setItems([
+            "expandAll",
+            "collapseAll",
+            "zoomIn",
+            "zoomOut",
+            "fit",
+            "recurse",
+            "dark",
+          ]);
+          // Render and position the toolbar.
+          const tEl = toolbar.render();
+          tEl.style.position = "absolute";
+          tEl.style.right = "20px";
+          tEl.style.bottom = "20px";
+          container.appendChild(tEl);
+        });
+      };
+      window.markmap = window.markmap || {};
+      window.markmap.autoLoader = window.markmap.autoLoader || {};
+      // Preserve any existing onReady (defensive — none today, but
+      // if markmap ever adds one, we don't want to break it).
+      const existing = window.markmap.autoLoader.onReady;
+      window.markmap.autoLoader.onReady = function () {
+        if (existing) { try { existing(); } catch (e) {} }
+        onReady();
+      };
+    })();
+  </script>
+"""
+
+
+def render_mindmap_html(tree, title, is_collection=False):
+    """Render a MindMapNode as a self-contained HTML file using Markmap.
+
+    The output is a single HTML file with:
+      - Markdown frontmatter that sets `initialExpandLevel` based on
+        the tree shape (1 level for single-book, 2 levels for
+        collection).
+      - The markmap-autoloader from jsDelivr, which auto-detects the
+        `.markmap` div and renders it.
+      - A custom `onReady` callback that registers two extra
+        toolbar buttons: "Expand all" and "Collapse all". The default
+        markmap toolbar only has zoom/fit/recurse/dark — it does NOT
+        have expand-all / collapse-all.
+
+    Args:
+        tree: The MindMapNode to render.
+        title: Title for the `<h1>` and `<title>` tags.
+        is_collection: True if the source was a multi-book
+            collection. Affects the default `initialExpandLevel`.
+
+    Returns:
+        A complete HTML document as a string.
+
+    The user can interact with the mindmap in the browser:
+      - Click a node to expand/collapse its children.
+      - Ctrl+click for recursive expand/collapse.
+      - Use the toolbar (top-right) for zoom, fit, dark mode, and
+        the custom Expand All / Collapse All buttons.
+    """
+    initial_level = _default_initial_expand_level(tree, is_collection)
+
+    # Frontmatter at the top of the markdown configures the
+    # initialExpandLevel via markmap's documented JSON-options
+    # interface. See https://markmap.js.org/docs/json-options.
+    frontmatter = (
+        "---\n"
+        "markmap:\n"
+        f"  initialExpandLevel: {initial_level}\n"
+        "---\n\n"
+    )
+    md_content = frontmatter + tree.to_markdown()
+
+    # Note on the toolbar: markmap-autoloader reads
+    # `window.markmap.autoLoader.toolbar` BEFORE loading
+    # markmap-toolbar. Setting `toolbar: true` causes it to attach
+    # the standard toolbar (zoomIn / zoomOut / fit / recurse / dark)
+    # to every `.markmap` element. Our `onReady` callback (in
+    # _TOOLBAR_INIT_JS) runs AFTER the toolbar has been attached, so
+    # we can add custom buttons to it via the public Toolbar API.
+    html = (
+        "<!DOCTYPE html>\n"
+        "<html>\n"
+        "<head>\n"
+        '  <meta charset="UTF-8">\n'
+        f"  <title>{title} - Mind Map</title>\n"
+        "  <script>\n"
+        "    // Enable the markmap toolbar before the autoloader\n"
+        "    // initializes. Without this, the toolbar (and our\n"
+        "    // custom buttons) won't appear.\n"
+        "    window.markmap = window.markmap || {};\n"
+        "    window.markmap.autoLoader = { toolbar: true };\n"
+        "  </script>\n"
+        '  <script src="https://cdn.jsdelivr.net/npm/markmap-autoloader@latest"></script>\n'
+        "  <style>\n"
+        "    /* Light theme (default). The markmap dark mode toggle\n"
+        "       adds the .markmap-dark class to <html>; we respond by\n"
+        "       flipping the page background + h1 text color. The\n"
+        "       markmap itself handles its own internal colors via\n"
+        "       CSS variables. */\n"
+        "    html, body { background: #ffffff; color: #222; }\n"
+        "    body { margin: 0; padding: 20px; font-family: system-ui, sans-serif; }\n"
+        "    h1 { margin: 0 0 10px 0; font-size: 20px; color: #222; }\n"
+        "    .markmap { width: 100%; height: 90vh; position: relative;\n"
+        "               background: #ffffff; }\n"
+        "    /* Dark theme: triggered by the markmap dark-mode toggle\n"
+        "       which adds `.markmap-dark` to <html>. We override\n"
+        "       our own surfaces; markmap handles the SVG colors\n"
+        "       internally via its `--markmap-text-color` variable. */\n"
+        "    html.markmap-dark, html.markmap-dark body { background: #1a1b26; color: #eee; }\n"
+        "    html.markmap-dark h1 { color: #eee; }\n"
+        "    html.markmap-dark .markmap { background: #1a1b26; }\n"
+        "  </style>\n"
+        "</head>\n"
+        "<body>\n"
+        f"  <h1>{title}</h1>\n"
+        '  <div class="markmap">\n\n'
+        f"{md_content}\n\n"
+        "  </div>\n"
+        f"{_TOOLBAR_INIT_JS}\n"
+        "</body>\n"
+        "</html>\n"
+    )
+    return html

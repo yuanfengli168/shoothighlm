@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 import httpx
 from .sampling import stratified_sample, head_sample
+from .llm import LLMUsage, call_ollama
 
 
 @dataclass
@@ -205,18 +206,12 @@ class PodcastGenerator:
 ## Podcast Script JSON:
 """
         
-        response = self.client.post(
-            f"{self.base_url}/api/generate",
-            json={
-                "model": self.chat_model,
-                "prompt": prompt,
-                "stream": False,
-            },
+        output, usage = call_ollama(
+            base_url=self.base_url,
+            model=self.chat_model,
+            prompt=prompt,
+            client=self.client,
         )
-        response.raise_for_status()
-        
-        # Parse JSON from response
-        output = response.json()["response"]
         
         # Extract JSON from markdown code blocks
         if "```json" in output:

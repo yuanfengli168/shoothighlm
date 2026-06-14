@@ -95,14 +95,15 @@ def test_infographic_value_error(runner, temp_notebook):
 def test_infographic_png_generic_exception(runner, temp_notebook):
     """Test that a non-ImportError exception in PNG render is reported"""
     from shoothighlm.infographic import Infographic
-    
+    from shoothighlm.llm import LLMUsage
+
     mock_info = Infographic(
         template="summary_card", title="T", data={},
         html_content="<!DOCTYPE html><html></html>",
     )
-    
+
     with patch('shoothighlm.infographic.InfographicGenerator') as mock_class:
-        mock_class.return_value.generate.return_value = mock_info
+        mock_class.return_value.generate.return_value = (mock_info, LLMUsage())
         with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
             mock_parse.return_value = iter(["text"])
             with patch('shoothighlm.infographic.render_html_to_png',

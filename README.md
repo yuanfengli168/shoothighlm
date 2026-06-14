@@ -119,7 +119,10 @@ shoot-high mindmap ./my-books
 # already summarizes the whole book (many non-fiction titles).
 shoot-high mindmap ./my-books --full
 
-# Generate mind map (interactive HTML preview)
+# Generate mind map (interactive HTML preview). The HTML view
+# opens with a smart default expand level (1 level for single
+# books, 2 levels for multi-book collections like 收藏版) and
+# includes custom toolbar buttons to Expand All / Collapse All.
 shoot-high mindmap ./my-books --format html
 
 # Export to specific format

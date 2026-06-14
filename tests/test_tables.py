@@ -196,12 +196,12 @@ def test_extractor_close(extractor):
 
 def test_extract_returns_empty_for_empty_text(extractor):
     """No text → no tables, no LLM call"""
-    result = extractor.extract("", max_tables=3)
+    result, _usage = extractor.extract("", max_tables=3)
     assert result == []
 
 
 def test_extract_returns_empty_for_whitespace(extractor):
-    result = extractor.extract("   \n\t  ", max_tables=3)
+    result, _usage = extractor.extract("   \n\t  ", max_tables=3)
     assert result == []
 
 
@@ -221,7 +221,7 @@ def test_extract_basic(extractor):
     mock_response.raise_for_status = Mock()
     
     with patch.object(extractor.client, "post", return_value=mock_response):
-        tables = extractor.extract("Some text about sales.", max_tables=3)
+        tables, _usage = extractor.extract("Some text about sales.", max_tables=3)
     
     assert len(tables) == 1
     t = tables[0]
@@ -245,7 +245,7 @@ def test_extract_multiple_tables(extractor):
     mock_response.raise_for_status = Mock()
     
     with patch.object(extractor.client, "post", return_value=mock_response):
-        tables = extractor.extract("text", max_tables=2)
+        tables, _usage = extractor.extract("text", max_tables=2)
     
     assert len(tables) == 2
     assert tables[0].name == "T1"
@@ -262,7 +262,7 @@ def test_extract_sets_source(extractor):
     mock_response.raise_for_status = Mock()
     
     with patch.object(extractor.client, "post", return_value=mock_response):
-        tables = extractor.extract("text", source="book.pdf")
+        tables, _usage = extractor.extract("text", source="book.pdf")
     
     assert tables[0].source == "book.pdf"
 
@@ -276,7 +276,7 @@ def test_extract_handles_json_code_block(extractor):
     mock_response.raise_for_status = Mock()
     
     with patch.object(extractor.client, "post", return_value=mock_response):
-        tables = extractor.extract("text")
+        tables, _usage = extractor.extract("text")
     
     assert len(tables) == 1
     assert tables[0].name == "X"
@@ -291,7 +291,7 @@ def test_extract_handles_bare_code_block(extractor):
     mock_response.raise_for_status = Mock()
     
     with patch.object(extractor.client, "post", return_value=mock_response):
-        tables = extractor.extract("text")
+        tables, _usage = extractor.extract("text")
     
     assert len(tables) == 1
 
@@ -305,7 +305,7 @@ def test_extract_handles_raw_json(extractor):
     mock_response.raise_for_status = Mock()
     
     with patch.object(extractor.client, "post", return_value=mock_response):
-        tables = extractor.extract("text")
+        tables, _usage = extractor.extract("text")
     
     assert len(tables) == 1
 
@@ -367,7 +367,7 @@ def test_extract_skips_malformed_entries(extractor):
     mock_response.raise_for_status = Mock()
     
     with patch.object(extractor.client, "post", return_value=mock_response):
-        tables = extractor.extract("text")
+        tables, _usage = extractor.extract("text")
     
     # Should skip the string and the no-columns entry
     assert len(tables) == 2
@@ -421,6 +421,6 @@ def test_extract_empty_array(extractor):
     mock_response.raise_for_status = Mock()
     
     with patch.object(extractor.client, "post", return_value=mock_response):
-        tables = extractor.extract("text")
+        tables, _usage = extractor.extract("text")
     
     assert tables == []

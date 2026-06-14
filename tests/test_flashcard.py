@@ -138,7 +138,7 @@ def test_flashcard_generator_generate_mock(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, 'post', return_value=mock_response):
-        cards = generator.generate("Test text about AI and ML", num_cards=2)
+        cards, _usage = generator.generate("Test text about AI and ML", num_cards=2)
         
         assert len(cards) == 2
         assert cards[0].question == "What is AI?"
@@ -155,7 +155,7 @@ def test_flashcard_generator_generate_no_json(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, 'post', return_value=mock_response):
-        cards = generator.generate("Test text", num_cards=5)
+        cards, _usage = generator.generate("Test text", num_cards=5)
         
         # Should return empty list
         assert len(cards) == 0
