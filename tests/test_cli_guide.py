@@ -102,25 +102,38 @@ def test_guide_custom_questions_count(runner, temp_notebook_with_pdfs, mock_guid
             assert call_args[1]["num_questions"] == 8
 
 
-def test_guide_custom_output_path(runner, temp_notebook_with_pdfs, mock_guide):
-    """Test guide command with custom output path"""
+@pytest.fixture
+def temp_notebook_with_single_pdf():
+    """Create a temporary notebook with a single fake PDF."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        notebook = Path(tmpdir) / "test-notebook"
+        notebook.mkdir()
+
+        # Create a single fake PDF file
+        (notebook / "book1.pdf").write_bytes(b"%PDF-1.4 fake pdf 1")
+
+        yield notebook
+
+
+def test_guide_custom_output_path(runner, temp_notebook_with_single_pdf, mock_guide):
+    """Test guide command with custom output path (single PDF)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "custom-guide.md"
-        
+
         with patch('shoothighlm.guide.GuideGenerator') as mock_gen_class:
             mock_gen = MagicMock()
             mock_gen.generate.return_value = mock_guide
             mock_gen_class.return_value = mock_gen
-            
+
             with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
                 mock_parse.return_value = iter(["Sample text"])
-                
+
                 result = runner.invoke(main, [
                     "guide",
-                    str(temp_notebook_with_pdfs),
+                    str(temp_notebook_with_single_pdf),
                     "--output", str(output_path),
                 ])
-                
+
                 assert result.exit_code == 0
                 # Strip whitespace to handle rich's terminal-width line wrapping
                 assert str(output_path) in result.output.replace("\n", "")
@@ -128,6 +141,59 @@ def test_guide_custom_output_path(runner, temp_notebook_with_pdfs, mock_guide):
                 # Verify content
                 content = output_path.read_text()
                 assert "Test Notebook" in content
+
+
+def test_guide_output_dir_flag(runner, temp_notebook_with_pdfs, mock_guide):
+    """Test guide command with --output-dir flag (works for any # of PDFs)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_dir = Path(tmpdir) / "my-guides"
+
+        with patch('shoothighlm.guide.GuideGenerator') as mock_gen_class:
+            mock_gen = MagicMock()
+            mock_gen.generate.return_value = mock_guide
+            mock_gen_class.return_value = mock_gen
+
+            with patch('shoothighlm.pdf.parse_pdf', side_effect=[
+                iter(["Text from book 1"]),
+                iter(["Text from book 2"]),
+            ]):
+                result = runner.invoke(main, [
+                    "guide",
+                    str(temp_notebook_with_pdfs),
+                    "--output-dir", str(output_dir),
+                ])
+
+                assert result.exit_code == 0
+                assert output_dir.is_dir()
+                # The file should be created with the default pattern: {title}-guide.md
+                out_file = output_dir / "test-notebook-guide.md"
+                assert out_file.exists()
+                content = out_file.read_text()
+                assert "Test Notebook" in content
+
+
+def test_guide_custom_name_pattern(runner, temp_notebook_with_single_pdf, mock_guide):
+    """Test guide command with --name-pattern flag (single PDF)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_dir = Path(tmpdir) / "out"
+
+        with patch('shoothighlm.guide.GuideGenerator') as mock_gen_class:
+            mock_gen = MagicMock()
+            mock_gen.generate.return_value = mock_guide
+            mock_gen_class.return_value = mock_gen
+
+            with patch('shoothighlm.pdf.parse_pdf') as mock_parse:
+                mock_parse.return_value = iter(["Sample text"])
+
+                result = runner.invoke(main, [
+                    "guide",
+                    str(temp_notebook_with_single_pdf),
+                    "--output-dir", str(output_dir),
+                    "--name-pattern", "my-{kind}-custom{ext}",
+                ])
+
+                assert result.exit_code == 0
+                assert (output_dir / "my-guide-custom.md").exists()
 
 
 def test_guide_no_pdfs(runner):

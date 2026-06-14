@@ -3,6 +3,7 @@ shootHighLM CLI — Chinese-first, multi-LLM CLI alternative to Google NotebookL
 """
 
 import json
+import os
 import click
 import httpx
 from rich import print as rprint
@@ -77,6 +78,88 @@ def _config_get(config, *keys: str, default=None):
         if value is None:
             return default
     return value
+
+
+# Default filename patterns. Each command picks one via `kind=...`.
+# Placeholders: {stem} = PDF stem (without .pdf), {n} = 1-based index,
+# {kind} = "mindmap" / "flashcards" / etc., {ext} = ".md" / ".html" / etc.
+# {title} = the LLM-generated title (mindmap/flashcard) or notebook name
+# (guide/infographic/tables).
+DEFAULT_NAME_PATTERNS = {
+    "mindmap":     "{stem}-{kind}{ext}",
+    "flashcards":  "{stem}-{kind}{ext}",
+    "podcast":     "{stem}-{kind}{ext}",
+    "guide":       "{title}-{kind}{ext}",
+    "infographic": "{title}-{kind}{ext}",
+    "tables":      "{title}-{kind}{ext}",
+}
+
+
+def _resolve_output_paths(
+    output: str | None,
+    output_dir_flag: str | None,
+    name_pattern: str | None,
+    notebook_path: Path,
+    pdfs: list,
+    n: int,
+    kind: str,
+    ext: str,
+) -> tuple[Path, str]:
+    """Decide where to write the generated artifact.
+
+    Returns (output_path, mode) where mode is one of:
+      - "single_file"  — user passed --output FILE and exactly 1 PDF.
+                          Returns that exact file path.
+      - "single_dir"   — user passed --output FILE that is a directory
+                          (trailing slash) or there are multiple PDFs.
+                          Returns the per-PDF path under that directory.
+      - "dir_flag"     — user passed --output-dir. Returns per-PDF path
+                          under that directory.
+      - "default"      — neither flag. Returns per-PDF path under
+                          `<notebook>/output/`.
+
+    The `name_pattern` string may contain {stem}, {n}, {kind}, {ext}, {title}.
+    """
+    if output:
+        out_path = Path(output)
+        # Treat trailing-separator or existing-directory as a directory.
+        if str(output).endswith(("/", os.sep)) or out_path.is_dir():
+            out_dir = out_path
+            mode = "single_dir"
+        else:
+            if len(pdfs) > 1:
+                # User asked for a specific file path but has multiple PDFs.
+                # Fall back to writing into that path as a *directory* and
+                # emit per-PDF files inside it.
+                out_dir = out_path
+                mode = "single_dir"
+            else:
+                # Single PDF, single file path — use it verbatim.
+                return out_path, "single_file"
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        pattern = name_pattern or DEFAULT_NAME_PATTERNS.get(kind, "{stem}-{kind}{ext}")
+        # Title placeholder: use PDF stem (per-PDF) for per-book commands,
+        # notebook name for notebook-level commands.
+        title = pdfs[n - 1].stem if kind in ("mindmap", "flashcards", "podcast") else notebook_path.name
+        filename = pattern.format(stem=pdfs[n - 1].stem, n=n, kind=kind, ext=ext, title=title)
+        return out_dir / filename, mode
+
+    if output_dir_flag:
+        out_dir = Path(output_dir_flag)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        pattern = name_pattern or DEFAULT_NAME_PATTERNS.get(kind, "{stem}-{kind}{ext}")
+        title = pdfs[n - 1].stem if kind in ("mindmap", "flashcards", "podcast") else notebook_path.name
+        filename = pattern.format(stem=pdfs[n - 1].stem, n=n, kind=kind, ext=ext, title=title)
+        return out_dir / filename, "dir_flag"
+
+    # Default: notebook/output/ with the standard pattern
+    out_dir = notebook_path / "output"
+    out_dir.mkdir(exist_ok=True)
+    pattern = name_pattern or DEFAULT_NAME_PATTERNS.get(kind, "{stem}-{kind}{ext}")
+    title = pdfs[n - 1].stem if kind in ("mindmap", "flashcards", "podcast") else notebook_path.name
+    filename = pattern.format(stem=pdfs[n - 1].stem, n=n, kind=kind, ext=ext, title=title)
+    return out_dir / filename, "default"
 
 
 @click.group()
@@ -272,11 +355,13 @@ def chat(notebook: str, question: tuple[str], model: str, use_local: bool, show_
 @main.command()
 @click.argument("notebook", type=click.Path(exists=True))
 @click.option("--format", "fmt", type=click.Choice(["markdown", "opml", "html", "json"]), default="markdown")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF only)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF), or a directory ending in '/' to write per-PDF files into.")
+@click.option("--output-dir", default=None, help="Directory to write per-PDF mind maps into (alternative to --output). Created if missing.")
+@click.option("--name-pattern", default=None, help="Filename pattern with placeholders: {stem} {n} {kind} {ext} {title}. Default: {stem}-mindmap{ext}")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
-@click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity mind maps on large books")
-def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool, use_full: bool):
+@click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 25K default) for higher-fidelity mind maps on large books")
+def mindmap(notebook: str, fmt: str, output: str, output_dir: str, name_pattern: str, model: str, use_local: bool, use_full: bool):
     """Generate mind map from PDFs (one mind map per PDF in the notebook)"""
     from .config import Config
     from .pdf import parse_pdf
@@ -298,23 +383,8 @@ def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool, u
     chat_model = resolve_chat_model(config, use_local, model)
     extractor = MindMapExtractor(chat_model=chat_model)
 
-    # --output only makes sense for a single PDF. Reject if multiple
-    # PDFs are found so we don't silently overwrite the first one.
-    if output and len(pdfs) > 1:
-        rprint(
-            "[red]✗ --output can only be used with a single PDF. "
-            f"Found {len(pdfs)} PDFs in {notebook}. "
-            "Drop the --output flag to write one mind map per PDF.[/red]"
-        )
-        extractor.close()
-        return
-
-    output_dir = notebook_path / "output"
-    if not output:
-        output_dir.mkdir(exist_ok=True)
-
     try:
-        for pdf in pdfs:
+        for i, pdf in enumerate(pdfs, start=1):
             rprint(f"[blue]Processing:[/blue] {pdf.name}")
 
             # Concatenate text from every page (was: only first page!)
@@ -324,7 +394,7 @@ def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool, u
                 continue
 
             rprint(f"  Extracted {len(all_text):,} chars")
-            rprint(f"[dim]Extracting mind map with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
+            rprint(f"[dim]Extracting mind map with model {chat_model} (prompt: {'50K' if use_full else '25K'} chars)...[/dim]")
             try:
                 mindmap_tree = extractor.extract(all_text, title=pdf.stem, use_full=use_full)
             except Exception as e:
@@ -372,8 +442,17 @@ def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool, u
 </html>"""
                 ext = ".html"
 
-            # Write to file
-            output_path = Path(output) if output else output_dir / f"{pdf.stem}-mindmap{ext}"
+            # Resolve output path using the shared helper
+            output_path, _mode = _resolve_output_paths(
+                output=output,
+                output_dir_flag=output_dir,
+                name_pattern=name_pattern,
+                notebook_path=notebook_path,
+                pdfs=pdfs,
+                n=i,
+                kind="mindmap",
+                ext=ext,
+            )
             output_path.write_text(content, encoding="utf-8")
             rprint(f"[green]✓ Mind map saved to:[/green] {output_path}")
 
@@ -385,11 +464,13 @@ def mindmap(notebook: str, fmt: str, output: str, model: str, use_local: bool, u
 @click.argument("notebook", type=click.Path(exists=True))
 @click.option("--num", "-n", default=10, help="Number of flashcards to generate per PDF")
 @click.option("--format", "fmt", type=click.Choice(["markdown", "csv", "json"]), default="markdown")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF only)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF), or a directory ending in '/' to write per-PDF files into.")
+@click.option("--output-dir", default=None, help="Directory to write per-PDF flashcard sets into (alternative to --output). Created if missing.")
+@click.option("--name-pattern", default=None, help="Filename pattern with placeholders: {stem} {n} {kind} {ext} {title}. Default: {stem}-flashcards{ext}")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
 @click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity flashcard generation")
-def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_local: bool, use_full: bool):
+def flashcard(notebook: str, num: int, fmt: str, output: str, output_dir: str, name_pattern: str, model: str, use_local: bool, use_full: bool):
     """Generate flashcards from PDFs (one flashcard set per PDF in the notebook)"""
     from .config import Config
     from .pdf import parse_pdf
@@ -411,23 +492,8 @@ def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_lo
     chat_model = resolve_chat_model(config, use_local, model)
     generator = FlashcardGenerator(chat_model=chat_model)
 
-    # --output only makes sense for a single PDF. Reject if multiple
-    # PDFs are found so we don't silently overwrite the first one.
-    if output and len(pdfs) > 1:
-        rprint(
-            "[red]✗ --output can only be used with a single PDF. "
-            f"Found {len(pdfs)} PDFs in {notebook}. "
-            "Drop the --output flag to write one flashcard set per PDF.[/red]"
-        )
-        generator.close()
-        return
-
-    output_dir = notebook_path / "output"
-    if not output:
-        output_dir.mkdir(exist_ok=True)
-
     try:
-        for pdf in pdfs:
+        for i, pdf in enumerate(pdfs, start=1):
             rprint(f"[blue]Processing:[/blue] {pdf.name}")
 
             # Concatenate text from every page (was: only first page!)
@@ -469,8 +535,17 @@ def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_lo
                 content = json.dumps([card.to_dict() for card in cards], indent=2, ensure_ascii=False)
                 ext = ".json"
 
-            # Write to file
-            output_path = Path(output) if output else output_dir / f"{pdf.stem}-flashcards{ext}"
+            # Resolve output path using the shared helper
+            output_path, _mode = _resolve_output_paths(
+                output=output,
+                output_dir_flag=output_dir,
+                name_pattern=name_pattern,
+                notebook_path=notebook_path,
+                pdfs=pdfs,
+                n=i,
+                kind="flashcards",
+                ext=ext,
+            )
             output_path.write_text(content, encoding="utf-8")
             rprint(f"[green]✓ Flashcards saved to:[/green] {output_path}")
 
@@ -482,13 +557,15 @@ def flashcard(notebook: str, num: int, fmt: str, output: str, model: str, use_lo
 @click.argument("notebook", type=click.Path(exists=True))
 @click.option("--duration", "-d", default=5, help="Podcast duration in minutes")
 @click.option("--format", "fmt", type=click.Choice(["markdown", "json"]), default="markdown")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF only)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF), or a directory ending in '/' to write per-PDF files into.")
+@click.option("--output-dir", default=None, help="Directory to write per-PDF podcast scripts into (alternative to --output). Created if missing.")
+@click.option("--name-pattern", default=None, help="Filename pattern with placeholders: {stem} {n} {kind} {ext} {title}. Default: {stem}-podcast{ext}")
 @click.option("--host-a", default="Alex", help="Host A name")
 @click.option("--host-b", default="Jamie", help="Host B name")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
 @click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity podcast scripts")
-def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, host_b: str, model: str, use_local: bool, use_full: bool):
+def podcast(notebook: str, duration: int, fmt: str, output: str, output_dir: str, name_pattern: str, host_a: str, host_b: str, model: str, use_local: bool, use_full: bool):
     """Generate podcast from PDFs (one script per PDF in the notebook)"""
     from .config import Config
     from .pdf import parse_pdf
@@ -514,23 +591,8 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, ho
         host_b_name=host_b,
     )
 
-    # --output only makes sense for a single PDF. Reject if multiple
-    # PDFs are found so we don't silently overwrite the first one.
-    if output and len(pdfs) > 1:
-        rprint(
-            "[red]✗ --output can only be used with a single PDF. "
-            f"Found {len(pdfs)} PDFs in {notebook}. "
-            "Drop the --output flag to write one podcast script per PDF.[/red]"
-        )
-        generator.close()
-        return
-
-    output_dir = notebook_path / "output"
-    if not output:
-        output_dir.mkdir(exist_ok=True)
-
     try:
-        for pdf in pdfs:
+        for i, pdf in enumerate(pdfs, start=1):
             rprint(f"[blue]Processing:[/blue] {pdf.name}")
 
             # Concatenate text from every page (was: only first page!)
@@ -560,8 +622,17 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, host_a: str, ho
                 content = script.to_json()
                 ext = ".json"
 
-            # Write to file
-            output_path = Path(output) if output else output_dir / f"{pdf.stem}-podcast{ext}"
+            # Resolve output path using the shared helper
+            output_path, _mode = _resolve_output_paths(
+                output=output,
+                output_dir_flag=output_dir,
+                name_pattern=name_pattern,
+                notebook_path=notebook_path,
+                pdfs=pdfs,
+                n=i,
+                kind="podcast",
+                ext=ext,
+            )
             output_path.write_text(content, encoding="utf-8")
             rprint(f"[green]✓ Podcast script saved to:[/green] {output_path}")
 
@@ -670,12 +741,14 @@ def synthesize(
 @main.command()
 @click.argument("notebook", type=click.Path(exists=True))
 @click.option("--format", "fmt", type=click.Choice(["markdown", "json"]), default="markdown")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF), or a directory ending in '/' to write per-PDF files into.")
+@click.option("--output-dir", default=None, help="Directory to write per-PDF guides into (alternative to --output). Created if missing.")
+@click.option("--name-pattern", default=None, help="Filename pattern with placeholders: {stem} {n} {kind} {ext} {title}. Default: {title}-guide{ext}")
 @click.option("--questions", "-q", default=5, help="Number of suggested questions")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
 @click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity guide generation")
-def guide(notebook: str, fmt: str, output: str, questions: int, model: str, use_local: bool, use_full: bool):
+def guide(notebook: str, fmt: str, output: str, output_dir: str, name_pattern: str, questions: int, model: str, use_local: bool, use_full: bool):
     """Generate notebook guide (summary, key topics, suggested questions)"""
     from .config import Config
     from .pdf import parse_pdf
@@ -730,7 +803,7 @@ def guide(notebook: str, fmt: str, output: str, questions: int, model: str, use_
             else:
                 rprint(f"[red]✗ Guide generation failed:[/red] {e}")
             return
-        
+
         # Export based on format
         if fmt == "markdown":
             content = notebook_guide.to_markdown()
@@ -738,18 +811,22 @@ def guide(notebook: str, fmt: str, output: str, questions: int, model: str, use_
         elif fmt == "json":
             content = notebook_guide.to_json()
             ext = ".json"
-        
-        # Write to file
-        if output:
-            output_path = Path(output)
-        else:
-            output_dir = notebook_path / "output"
-            output_dir.mkdir(exist_ok=True)
-            output_path = output_dir / f"{notebook_path.name}-guide{ext}"
-        
+
+        # Resolve output path using the shared helper. Guide is a
+        # notebook-level command, so `n=1` and we use the notebook name.
+        output_path, _mode = _resolve_output_paths(
+            output=output,
+            output_dir_flag=output_dir,
+            name_pattern=name_pattern,
+            notebook_path=notebook_path,
+            pdfs=pdfs,
+            n=1,
+            kind="guide",
+            ext=ext,
+        )
         output_path.write_text(content, encoding="utf-8")
         rprint(f"[green]✓ Guide saved to:[/green] {output_path}")
-        
+
     finally:
         generator.close()
 
@@ -760,14 +837,16 @@ def guide(notebook: str, fmt: str, output: str, questions: int, model: str, use_
               type=click.Choice(["summary_card", "topic_hierarchy", "stats_card"]),
               default="summary_card",
               help="Infographic template")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output HTML path")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF), or a directory ending in '/' to write per-PDF files into.")
+@click.option("--output-dir", default=None, help="Directory to write per-PDF infographics into (alternative to --output). Created if missing.")
+@click.option("--name-pattern", default=None, help="Filename pattern with placeholders: {stem} {n} {kind} {ext} {title}. Default: {title}-infographic{ext}")
 @click.option("--png", "to_png", is_flag=True, help="Also render to PNG (requires playwright)")
 @click.option("--width", default=1200, help="PNG viewport width")
 @click.option("--height", default=1600, help="PNG viewport height")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
 @click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity infographic generation")
-def infographic(notebook: str, template: str, output: str, to_png: bool, width: int, height: int, model: str, use_local: bool, use_full: bool):
+def infographic(notebook: str, template: str, output: str, output_dir: str, name_pattern: str, to_png: bool, width: int, height: int, model: str, use_local: bool, use_full: bool):
     """Generate an infographic from PDFs (HTML + optional PNG)"""
     from .config import Config
     from .pdf import parse_pdf
@@ -823,21 +902,25 @@ def infographic(notebook: str, template: str, output: str, to_png: bool, width: 
             else:
                 rprint(f"[red]✗ Generation failed:[/red] {e}")
             return
-        
-        # Determine output paths
-        if output:
-            html_path = Path(output)
-        else:
-            output_dir = notebook_path / "output"
-            output_dir.mkdir(exist_ok=True)
-            html_path = output_dir / f"{notebook_path.name}-{template}.html"
-        
+
+        # Infographic is notebook-level, so use n=1 with notebook name
+        ext = ".html"
+        html_path, _mode = _resolve_output_paths(
+            output=output,
+            output_dir_flag=output_dir,
+            name_pattern=name_pattern,
+            notebook_path=notebook_path,
+            pdfs=pdfs,
+            n=1,
+            kind="infographic",
+            ext=ext,
+        )
         html_path.parent.mkdir(parents=True, exist_ok=True)
         html_path.write_text(info.html_content, encoding="utf-8")
         info.output_path = html_path
-        
+
         rprint(f"[green]✓ HTML saved:[/green] {html_path}")
-        
+
         # Optionally render to PNG
         if to_png:
             png_path = html_path.with_suffix(".png")
@@ -851,7 +934,7 @@ def infographic(notebook: str, template: str, output: str, to_png: bool, width: 
                 rprint("[yellow]Tip:[/yellow] pip install playwright && playwright install chromium")
             except Exception as e:
                 rprint(f"[red]✗ PNG render failed:[/red] {e}")
-        
+
     except (ValueError, RuntimeError) as e:
         rprint(f"[red]✗ Generation failed:[/red] {e}")
     finally:
@@ -864,11 +947,13 @@ def infographic(notebook: str, template: str, output: str, to_png: bool, width: 
 @click.option("--format", "fmt",
               type=click.Choice(["markdown", "csv", "json", "html"]),
               default="markdown", help="Output format")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path (single PDF), or a directory ending in '/' to write per-PDF files into.")
+@click.option("--output-dir", default=None, help="Directory to write per-PDF tables into (alternative to --output). Created if missing.")
+@click.option("--name-pattern", default=None, help="Filename pattern with placeholders: {stem} {n} {kind} {ext} {title}. Default: {title}-tables{ext}")
 @click.option("--model", "model", default=None, help="Override chat model")
 @click.option("--use-local", is_flag=True, help="Use the local chat model (models.chat_local) instead of cloud")
 @click.option("--full", "use_full", is_flag=True, help="Use a larger prompt (50K chars vs 12K) for higher-fidelity table extraction")
-def tables(notebook: str, max_tables: int, fmt: str, output: str, model: str, use_local: bool, use_full: bool):
+def tables(notebook: str, max_tables: int, fmt: str, output: str, output_dir: str, name_pattern: str, model: str, use_local: bool, use_full: bool):
     """Extract data tables from PDFs (comparisons, statistics, lists, timelines)"""
     from .config import Config
     from .pdf import parse_pdf

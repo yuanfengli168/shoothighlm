@@ -63,22 +63,36 @@ def test_mindmap_processes_all_pdfs(runner, temp_notebook_with_3_pdfs):
     assert "book-three" in names, f"missing in {names}"
 
 
-def test_mindmap_rejects_output_with_multiple_pdfs(runner, temp_notebook_with_3_pdfs):
-    """--output can only be used with a single PDF — should fail loudly."""
-    with patch("shoothighlm.mindmap.MindMapExtractor") as mock_class:
-        mock_ext = MagicMock()
-        mock_class.return_value = mock_ext
-        result = runner.invoke(
-            main,
-            [
-                "mindmap",
-                str(temp_notebook_with_3_pdfs),
-                "--output", "/tmp/should-not-be-written.md",
-            ],
-        )
-    # Should print a clear error and NOT write the file
-    assert "--output can only be used with a single PDF" in result.output
-    assert not Path("/tmp/should-not-be-written.md").exists()
+def test_mindmap_output_dir_with_multiple_pdfs(runner, temp_notebook_with_3_pdfs):
+    """--output as a path is treated as a directory when there are multiple PDFs.
+
+    The new --resolve_output_paths helper intentionally allows this:
+    it's a friendlier experience than rejecting the command. Each PDF
+    still gets its own per-PDF file inside that directory.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        target_dir = Path(tmpdir) / "mindmaps"
+        mock_node = MindMapNode(id="root", title="X", children=[])
+        with patch("shoothighlm.mindmap.MindMapExtractor") as mock_class:
+            mock_ext = MagicMock()
+            mock_ext.extract.return_value = mock_node
+            mock_class.return_value = mock_ext
+            with patch(
+                "shoothighlm.pdf.parse_pdf",
+                side_effect=lambda *a, **kw: iter(["text"]),
+            ):
+                result = runner.invoke(
+                    main,
+                    [
+                        "mindmap",
+                        str(temp_notebook_with_3_pdfs),
+                        "--output", str(target_dir),
+                    ],
+                )
+        assert result.exit_code == 0, result.output
+        assert target_dir.is_dir()
+        md_files = sorted(target_dir.glob("*-mindmap.md"))
+        assert len(md_files) == 3, f"expected 3 files, got {md_files}"
 
 
 def test_mindmap_per_pdf_error_resilience(runner, temp_notebook_with_3_pdfs):
