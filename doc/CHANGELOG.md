@@ -30,7 +30,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quota-stop, and end-to-end run with state + tokens.log assertions.
 
 #### Test Coverage
-- **403 tests passing**, **94.06% coverage**.
+- **411 tests passing**, **93.81% coverage**.
+
+### Mindmap determinism + verbatim chapter titles
+
+#### Fixed
+- `call_ollama()` now sends `options: {temperature: 0, seed: 42}` so
+  every run produces the **same** output (Ollama's default
+  temperature is non-zero, so previous runs diverged).
+- New `_detect_chapters(text)` helper in `mindmap.py` pre-extracts
+  `第N章` / `第N部分` / `第N讲` markers from each sub-book's **full**
+  text range (BEFORE per-book sampling truncates them). Result is
+  injected as a "Detected chapters per sub-book" block in the LLM
+  prompt, so the model uses chapter titles verbatim (e.g. "第 1 章
+  磨炼灵魂 提升心志") instead of inventing theme names ("为什么要工作").
+- Strengthened the mindmap prompt with an explicit
+  "CHAPTERS MUST BE COPIED VERBATIM" rule.
+
+#### Added
+- 7 unit tests in `tests/test_mindmap.py` for `_detect_chapters`.
+- 1 unit test in `tests/test_llm.py` for the deterministic
+  request body (asserts `temperature=0` and `seed=42`).
+
+#### Test Coverage
+- **411 tests passing**, **93.81% coverage**.
 
 ### LLM call centralization + token accounting logs
 

@@ -436,7 +436,7 @@ prompts on M1 Max 64GB).
 
 ✅ **Phase 3 (P2+P3) Complete** — Podcast, TTS, Notebook Guides, and Infographics all shipped!
 
-**Test Coverage:** 403 tests passing, 94.06% coverage ✅
+**Test Coverage:** 411 tests passing, 93.81% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|

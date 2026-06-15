@@ -5,6 +5,69 @@ the commit metadata and a one-line summary of the change.
 
 ---
 
+## 2026-06-15 — Mindmap determinism + verbatim chapter titles (regression fix)
+
+| Field | Value |
+|---|---|
+| **Date** | 2026-06-15 22:38:52 +0800 |
+| **Branch** | `master` |
+| **Commit ID (full)** | `7ad311a9a369f4d743fe7107a4099d9b406a086a` |
+| **Commit ID (short)** | `7ad311a` |
+| **Parent** | `6c81dbf46b54af66731cbf013b25f7b8cbf502c4` (`6c81dbf` — _"docs: add README 'Batch automation' section + CHANGELOG entry + gitCommitDetails row for 644b0ed"_) |
+| **Author** | `yuanfengli168 <jackieliglobal@gmail.com>` |
+| **Remote** | `https://github.com/yuanfengli168/shoothighlm.git` |
+| **Files changed** | 4 (306 insertions, 2 deletions) |
+| **Status** | ✅ 411 tests pass, coverage 93.81% (above 93% gate); mindmap is now deterministic and chapter titles are copied verbatim from the source text |
+
+### Regression Context
+
+The user reported that running
+`shoot-high mindmap ~/my-books --full --format html` three times gave
+**three different mind maps**. Two compounded bugs:
+
+1. **Non-deterministic LLM.** Ollama's `/api/generate` defaults to
+   `temperature > 0`, so each call rolled fresh sampling dice and
+   produced a different tree.
+2. **Chapter titles disappeared.** The LLM was being asked to
+   enumerate `第N章 标题` markers from the source text but was
+   inventing theme names (`热爱导致成功`) instead of copying the
+   actual chapter titles. The markers were in the prompt but the
+   model was treating 干法 like prose.
+
+### Summary of Changes
+
+| # | File | Type | Change |
+|---|---|---|---|
+| 1 | `src/shoothighlm/llm.py` | M | `call_ollama()` now sends `options: {temperature: 0, seed: 42}` in the request body. Same prompt → same output, every run. |
+| 2 | `src/shoothighlm/mindmap.py` | M | New `_CHAPTER_PATTERN` regex + `_detect_chapters()` helper that pre-extracts `第N章`/`第N部分`/`第N讲` markers. For multi-book collections, chapters are detected from each sub-book's **full** text range (before per-book sampling truncates it) and grouped by sub-book in a "Detected chapters per sub-book" block. |
+| 3 | `src/shoothighlm/mindmap.py` | M | Strengthened the mindmap prompt with an explicit "CHAPTERS MUST BE COPIED VERBATIM" rule + anti-patterns ("不要 drop 第N章 prefix", "不要 replace with theme name"). |
+| 4 | `tests/test_mindmap.py` | M | 7 new unit tests for `_detect_chapters`: arabic-numbered, chinese-numbered, 部分/讲 kinds, dedup, max_titles cap, empty input, nested-OCR false positive. |
+| 5 | `tests/test_llm.py` | M | 1 new test: `test_call_ollama_sends_temperature_zero_and_seed` asserts the request body contains `options.temperature=0` and `options.seed=42`. Also added `MagicMock` to the imports. |
+
+### Why the Sampling Diagnosis Was Wrong
+
+A prior hypothesis was that `_per_book_sample` was truncating 干法's
+sampled slice so much that chapters 1-4 of 干法 were physically not
+in the prompt the LLM saw. Verification showed the opposite — the
+sampled slice contained all 4-6 occurrences of chapters 1-6
+markers. The model had the input but was choosing not to use the
+markers as ground truth. The actual fix needed to be (1) make the
+LLM deterministic so its choice is reproducible, and (2) inject the
+chapter list explicitly so the model treats the markers as
+authoritative.
+
+### End-to-End Verification
+
+| Step | Result |
+|---|---|
+| `shoot-high mindmap ~/my-books --full --format html` (run 1) | ✅ Tree produced, all 6 chapters of 《干法》 enumerated with verbatim titles |
+| Same command (run 2) | ✅ Byte-identical output to run 1 (determinism) |
+| `_detect_chapters("第 1 章 标题\n...\n第 1 章 标题")` (dup) | ✅ Returns 1 title (dedup) |
+| `_detect_chapters("")` | ✅ Returns `[]` (no crash) |
+| Full test suite | ✅ 411 passed, coverage 93.81% |
+
+---
+
 ## 2026-06-15 — Add 'shoot-high batch' command with include/exclude, parallelism, resume
 
 | Field | Value |
