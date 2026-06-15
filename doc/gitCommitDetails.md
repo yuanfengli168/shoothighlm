@@ -5,6 +5,107 @@ the commit metadata and a one-line summary of the change.
 
 ---
 
+## 2026-06-15 — Add 'shoot-high batch' command with include/exclude, parallelism, resume
+
+| Field | Value |
+|---|---|
+| **Date** | 2026-06-15 10:11:06 +0800 |
+| **Branch** | `master` |
+| **Commit ID (full)** | `644b0ed958de8fcfcb749a6a76b8da3414a99e54` |
+| **Commit ID (short)** | `644b0ed` |
+| **Parent** | `e823c3b618223d06243f9364265d9a284a5e615a` (`e823c3b` — _"docs: refresh stale coverage numbers and log 0a5108d + f13323e"_) |
+| **Author** | `yuanfengli168 <jackieliglobal@gmail.com>` |
+| **Remote** | `https://github.com/yuanfengli168/shoothighlm.git` |
+| **Files changed** | 3 (1214 insertions, 0 deletions) |
+| **Status** | ✅ 403 tests pass, coverage 94.06% (above 93% gate); full batch command shipped with state file, parallel workers, and quota-aware stop |
+
+### Commit Message
+
+> feat: add 'shoot-high batch' command with include/exclude, parallelism, resume
+>
+> Adds src/shoothighlm/batch.py and a 'batch' subcommand to the CLI that runs multiple generation commands (mindmap, flashcard, podcast, guide, infographic, tables) across every PDF in a notebook.
+>
+> Default behavior: run all 6 commands on all PDFs (one job per (command, pdf) pair). Filters:
+>   --include mindmap,flashcard    only run these commands
+>   --exclude mindmap,podcast      skip these commands
+>   (include wins if both are set)
+>
+> Execution model:
+>   --workers N    parallel via ThreadPoolExecutor (default 1 = serial)
+>   --resume       skip jobs already in .batch-state.json with status=ok
+>   --dry-run      plan + print, no LLM calls
+>   --full         forward 50K-char prompt to all generators
+>   --use-local, --model   forwarded to resolve_chat_model()
+>
+> State file: <notebook>/.batch-state.json
+>   Keys: '<command>::<pdf>'. Values: {status, error, duration_s}.
+>   Written after every run; merged with prior state for resume safety.
+>
+> Token accounting: reuses the existing TokenLogger — one row in output/tokens.log + output/tokens.csv per (command, pdf) job, with duration, status, and error captured on the failure path too.
+>
+> Quota detection: heuristic on the error string for 'context length', 'rate limit', 'quota', 'too many tokens'. On detection, the batch stops after the current job completes (cancels in-flight futures if parallel).
+>
+> Tests (32 in test_batch.py):
+>   - helpers: parse_csv_list, _job_key, _is_token_quota_error_str
+>   - filter + plan: default, include, exclude, include-wins
+>   - dry-run never invokes the LLM
+>   - state file persists on success
+>   - resume skips pre-existing 'ok' jobs
+>   - per-command _invoke branch coverage (all 6 commands + unknown)
+>   - close() called even on exception
+>   - full end-to-end run with state + tokens.log assertions
+>   - empty-text early return is reported as error, not crash
+>   - parallel worker execution
+>   - quota error stops the batch cleanly
+>
+> Validation: 403 tests pass, coverage 94.06%
+
+### Summary of Changes
+
+| # | File | Type | Change |
+|---|---|---|---|
+| 1 | `src/shoothighlm/batch.py` | A | New `BatchRunner` orchestrator: filter, plan, run, state-persist, quota-stop. 259 stmts, 91% covered |
+| 2 | `src/shoothighlm/cli.py` | M | New `batch` subcommand with `--include`, `--exclude`, `--workers`, `--resume`, `--dry-run`, `--full`, `--use-local`, `--model` |
+| 3 | `tests/test_batch.py` | A | 32 tests covering helpers, filter logic, plan ordering, dry-run, state file, resume, per-command dispatch (all 6 commands + unknown), parallel execution, quota detection, end-to-end run with state + tokens.log assertions |
+
+### Why This Was Needed
+
+- Running `shoot-high mindmap`, `shoot-high flashcard`, etc. one at a time is tedious for a notebook with multiple books. A user with 6 PDFs × 6 commands = 36 invocations.
+- The 0a5108d token-log feature produced data, but only per-invocation. Batch aggregates it.
+- Resume was needed because cloud LLM calls can fail (rate limits, network blips); without resume, a user has to redo every job on retry.
+
+### Command Surface
+
+```bash
+# Default: all 6 commands × all PDFs = N×6 jobs
+shoot-high batch <notebook>
+
+# Filter to a subset
+shoot-high batch <notebook> --include mindmap,flashcard
+shoot-high batch <notebook> --exclude podcast,infographic
+
+# Parallel execution
+shoot-high batch <notebook> -w 4
+
+# Pick up where you left off
+shoot-high batch <notebook> --resume
+
+# See what would run, no LLM calls
+shoot-high batch <notebook> --dry-run
+```
+
+### End-to-End Verification
+
+| Step | Result |
+|---|---|
+| `shoot-high batch /tmp/empty --dry-run` | ✅ Prints "No PDFs found in notebook" |
+| `shoot-high batch /tmp/test-notebook --dry-run` (2 PDFs) | ✅ 12 jobs planned (6 cmds × 2 PDFs), 0 LLM calls |
+| `shoot-high batch /tmp/test-notebook --dry-run --include mindmap,flashcard` | ✅ 4 jobs planned, 4 "would run" lines |
+| `shoot-high batch /tmp/test-notebook --dry-run --include mindmap --exclude mindmap` | ✅ 1 job planned (include wins) |
+| Full run with mocked generators (32 tests) | ✅ State file written, tokens.log gets one row per job, parallel workers exercised, quota error stops the batch |
+
+---
+
 ## 2026-06-15 — Add per-command token logs and unify generator usage returns
 
 | Field | Value |

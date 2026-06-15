@@ -221,6 +221,45 @@ shoot-high mindmap ~/my-books
 shoot-high mindmap ~/my-books --full
 ```
 
+## Batch automation
+
+Run all 6 generation commands across every PDF in a notebook with one
+invocation. Default: all 6 commands × all PDFs.
+
+```bash
+# Run everything (mindmap, flashcard, podcast, guide, infographic, tables)
+shoot-high batch ~/my-books
+
+# Run only a subset
+shoot-high batch ~/my-books --include mindmap,flashcard
+
+# Skip a subset (blacklist)
+shoot-high batch ~/my-books --exclude podcast,infographic
+
+# Both flags together → --include wins
+shoot-high batch ~/my-books --include mindmap --exclude mindmap   # still runs mindmap
+
+# Run 4 jobs in parallel (most LLM calls are I/O-bound)
+shoot-high batch ~/my-books -w 4
+
+# Resume a failed batch (skips jobs already in .batch-state.json with status=ok)
+shoot-high batch ~/my-books --resume
+
+# See what would run without making LLM calls
+shoot-high batch ~/my-books --dry-run
+
+# 50K-char prompt for higher fidelity
+shoot-high batch ~/my-books --full
+```
+
+Each batch writes:
+- `output/tokens.log` (JSONL) and `output/tokens.csv` — one row per (command, pdf) job
+- `.batch-state.json` — state file for `--resume`
+
+If a token-quota / context-length error is detected, the batch stops
+cleanly (cancels in-flight jobs if running in parallel) and reports
+which jobs need rerunning.
+
 ## Configuration
 
 Config file: `~/.shoothighlm/config.yaml`
@@ -397,7 +436,7 @@ prompts on M1 Max 64GB).
 
 ✅ **Phase 3 (P2+P3) Complete** — Podcast, TTS, Notebook Guides, and Infographics all shipped!
 
-**Test Coverage:** 371 tests passing, 94.39% coverage ✅
+**Test Coverage:** 403 tests passing, 94.06% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|

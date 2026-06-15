@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Batch automation (`shoot-high batch`)
+
+#### Added
+- `src/shoothighlm/batch.py` with `BatchRunner` that orchestrates running
+  all 6 generation commands (mindmap, flashcard, podcast, guide,
+  infographic, tables) across every PDF in a notebook.
+- `shoot-high batch` subcommand with these flags:
+  - `--include cmd1,cmd2` — only run these commands (overrides `--exclude`)
+  - `--exclude cmd1,cmd2` — skip these commands
+  - `--workers N` / `-w N` — parallel execution via `ThreadPoolExecutor`
+  - `--resume` — skip jobs already completed (reads `.batch-state.json`)
+  - `--dry-run` — plan and print without invoking the LLM
+  - `--full` — forward 50K-char prompt to all generators
+  - `--use-local`, `--model` — forwarded to `resolve_chat_model()`
+- `.batch-state.json` written under each notebook for resume safety.
+- Token-quota error detection (heuristic on `context length`,
+  `rate limit`, `quota`, `too many tokens`): batch stops cleanly
+  after the current job, cancelling in-flight futures.
+- `tests/test_batch.py` with 32 tests covering filter, plan, dry-run,
+  state persistence, resume, per-command dispatch, parallel workers,
+  quota-stop, and end-to-end run with state + tokens.log assertions.
+
+#### Test Coverage
+- **403 tests passing**, **94.06% coverage**.
+
 ### LLM call centralization + token accounting logs
 
 #### Added
