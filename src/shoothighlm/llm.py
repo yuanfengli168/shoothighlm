@@ -103,6 +103,18 @@ def call_ollama(
             "model": model,
             "prompt": prompt,
             "stream": False,
+            # Deterministic generation: same prompt → same output, every
+            # time. Ollama's default `temperature` is non-zero, which
+            # means the same call can return different trees on
+            # different runs (different temperature roll = different
+            # sampled token = cascade into different structure). Set
+            # `temperature: 0` to always pick the highest-probability
+            # token, and `seed: 42` so even the (rare) tie-breaking
+            # random choice is reproducible.
+            "options": {
+                "temperature": 0.0,
+                "seed": 42,
+            },
         },
     )
     response.raise_for_status()

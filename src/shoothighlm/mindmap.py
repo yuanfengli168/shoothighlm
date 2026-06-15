@@ -283,6 +283,58 @@ def _per_book_sample(
     return "\n\n".join(parts), sampled
 
 
+# Pattern: `第 N 章`, `第N部分`, `第 N 讲` — Chinese chapter markers
+# that almost always appear with a colon / space / newline after the
+# number, and then a title. We capture the full "第 N 章 标题" form so
+# we can hand the title to the LLM as ground truth.
+_CHAPTER_PATTERN = re.compile(
+    r"第\s*([0-9一二三四五六七八九十百千零两]+)\s*"
+    r"(章|部分|讲|节|篇)\s*"
+    r"([^\n\r]{2,80})",  # the chapter title (2-80 chars, until newline)
+)
+
+
+def _detect_chapters(text: str, max_titles: int = 30) -> List[str]:
+    """Find chapter / part / lecture titles in the source text.
+
+    Returns a list of full titles (e.g. ``["第 1 章 磨炼灵魂 提升心志", ...]``)
+    in the order they appear, deduplicated. Used to inject ground-truth
+    chapter titles into the LLM prompt so the model uses them verbatim
+    instead of inventing theme names from chapter content.
+
+    Args:
+        text: Source text (usually the per-book sample sent to the LLM).
+        max_titles: Cap the number of detected titles to keep the prompt
+            manageable for long books. 30 is enough for 99% of real books.
+
+    Returns:
+        List of detected chapter titles. Empty if none found.
+    """
+    if not text:
+        return []
+    seen: set = set()
+    titles: List[str] = []
+    for m in _CHAPTER_PATTERN.finditer(text):
+        num, kind, title = m.group(1), m.group(2), m.group(3).strip()
+        # Skip clearly false positives:
+        #   - Title is just digits / punctuation
+        #   - Title contains another chapter marker (nested — broken OCR)
+        if not title or len(title) < 2:
+            continue
+        if re.search(r"第\s*[0-9一二三四五六七八九十]+\s*章", title):
+            continue
+        full = f"第 {num} {kind} {title}"
+        # Normalize whitespace for dedup
+        key = re.sub(r"\s+", " ", full)
+        if key in seen:
+            continue
+        seen.add(key)
+        titles.append(key)
+        if len(titles) >= max_titles:
+            break
+    return titles
+
+
 @dataclass
 class MindMapNode:
     """A node in the mind map tree"""
@@ -396,6 +448,29 @@ class MindMapExtractor:
         is_collection = (
             len(sub_books) > 1 and sub_books[0][0] != "__whole_book__"
         )
+
+        # Build the "Detected chapters" block BEFORE sampling. For
+        # collections this is critical: the per-book sampling
+        # truncates each sub-book's slice to ~8K chars, which
+        # truncates the `第N章` markers of mid-book chapters. We want
+        # the LLM to see the FULL chapter list for each sub-book as
+        # ground truth, not whatever the sampling happened to keep.
+        if is_collection:
+            # Group detected chapters by which sub-book they belong to,
+            # by checking which sub-book's [start, end) range the
+            # chapter marker's offset falls into.
+            full_text = text  # not yet sampled
+            detected_per_book: List[List[str]] = []
+            all_chapter_titles: List[str] = []
+            for title, start, end in sub_books:
+                book_text = full_text[start:end]
+                book_chapters = _detect_chapters(book_text, max_titles=20)
+                detected_per_book.append(book_chapters)
+                all_chapter_titles.extend(book_chapters)
+        else:
+            all_chapter_titles = _detect_chapters(text, max_titles=30)
+            detected_per_book = None
+
         if is_collection:
             text, sub_books = _per_book_sample(text, max_chars, sub_books)
         elif len(text) > max_chars:
@@ -429,6 +504,69 @@ class MindMapExtractor:
         else:
             detected_block = ""
 
+        # Build a "Detected chapters" block from the actual text. This
+        # is the real fix for the "chapters 1-4 disappeared" regression:
+        # the LLM was being asked to enumerate chapters but inventing
+        # theme names from chapter content because the `第N章` markers
+        # were buried in mid-book slices the model didn't see as
+        # structure. Pre-extracting them and listing them as ground
+        # truth forces the LLM to use the exact `第 N 章 标题` form.
+        if is_collection and detected_per_book is not None:
+            # Group chapters under their sub-book so the LLM can map
+            # them directly. Without grouping, the LLM has to guess
+            # which chapter belongs to which sub-book.
+            chapters_block = (
+                "## Detected chapters per sub-book\n"
+                "The following `第N章` / `第N部分` / `第N讲` markers were "
+                "found in the source. For EACH sub-book below, use the "
+                "listed chapter titles VERBATIM as level-2 node titles. "
+                "Do NOT paraphrase, summarize, or invent a new theme "
+                "name. If the source has '第 1 章 磨炼灵魂 提升心志', the "
+                "mind-map node title for that chapter MUST be exactly "
+                "'第 1 章 磨炼灵魂 提升心志' — not '磨炼灵魂' or '为什么要工作'.\n\n"
+            )
+            for (title, start, end), book_chapters in zip(
+                sub_books, detected_per_book
+            ):
+                if not book_chapters:
+                    chapters_block += (
+                        f"- 《{title}》: (no `第N章` markers found — "
+                        "infer chapters from this sub-book's content "
+                        "or use the sub-book's own section headings)\n"
+                    )
+                    continue
+                chapters_block += f"- 《{title}》:\n"
+                for t in book_chapters:
+                    chapters_block += f"    - {t}\n"
+            chapters_block += (
+                "\nEvery chapter listed here MUST appear as a level-2 "
+                "node under its parent sub-book. Do NOT collapse multiple "
+                "chapters into one node. Do NOT split one chapter into "
+                "multiple nodes. The user wants to see the actual chapter "
+                "list, not your interpretation of it.\n"
+            )
+        elif all_chapter_titles:
+            chapters_block = (
+                "## Detected chapters in the source text\n"
+                "The following `第N章` / `第N部分` / `第N讲` markers were "
+                "found in the source. You MUST use these titles VERBATIM "
+                "as level-2 (or deeper) node titles. Do NOT paraphrase, "
+                "summarize, or invent a new theme name. If the source has "
+                "'第 1 章 磨炼灵魂 提升心志', the node title in the mind "
+                "map must be exactly '第 1 章 磨炼灵魂 提升心志' — not "
+                "'磨炼灵魂' or '为什么要工作'.\n\n"
+            )
+            for i, t in enumerate(all_chapter_titles, 1):
+                chapters_block += f"  {i}. {t}\n"
+            chapters_block += (
+                "\nMap each detected chapter to a level-2 node. If a "
+                "chapter number appears twice (rare — same number in "
+                "different parts of a book), they're different nodes "
+                "with the same human-readable title.\n"
+            )
+        else:
+            chapters_block = ""
+
         prompt = f"""You are a book table-of-contents extractor. Extract a HIERARCHICAL, COMPREHENSIVE mind map of the book — NOT a summary.
 
 ## CRITICAL: This is often a multi-book collection
@@ -446,9 +584,16 @@ Look for explicit section / part / 书 / 作品 / 篇 / 卷 / 部 / 册 markers
 in the text — these indicate separate works that should each get their own
 top-level node.
 
-{detected_block}## Approach
+{detected_block}{chapters_block}## Approach
 - ENUMERATE, do not summarize. If the book has 12 chapters, the map has 12 level-2 nodes under that book's level-1 entry.
 - Each leaf should be a SPECIFIC named principle, method, story, definition, or argument from the book — never a vague theme like "工作态度" (work attitude). Prefer the book's own terminology: if the book calls a concept "极度认真工作", use that exact phrasing.
+- CHAPTERS MUST BE COPIED VERBATIM. If a chapter in the source is
+  "第 1 章 磨炼灵魂 提升心志", the mind-map node title for that chapter
+  MUST be exactly "第 1 章 磨炼灵魂 提升心志" — including the "第 1 章"
+  prefix. Do NOT drop the prefix ("磨炼灵魂 提升心志" is WRONG). Do NOT
+  replace it with a theme ("为什么要工作" is WRONG). Do NOT split one
+  chapter into multiple nodes. The user wants to see the actual chapter
+  list, not your interpretation of it.
 - Aim for 80–150 total nodes. A 1,000-page book deserves a rich map, not a 10-bullet list. A multi-book collection can easily reach 200+ nodes — that's correct.
 - Use the book's own language (Chinese stays Chinese, English stays English, etc.).
 - CRITICAL: For a collection, EVERY sub-book listed in the

@@ -1,7 +1,7 @@
 """Tests for the shared LLM client + token usage tracker."""
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import httpx
 import pytest
@@ -126,3 +126,42 @@ def test_llm_usage_total():
     assert u.total == 150
     u2 = LLMUsage()  # defaults
     assert u2.total == 0
+
+
+def test_call_ollama_sends_temperature_zero_and_seed():
+    """Determinism: temperature=0 + fixed seed should be in the request.
+
+    Without this, every call to /api/generate rolls a fresh
+    temperature dice, producing a different tree each run. The user
+    noticed this for `shoot-high mindmap` — same prompt, three runs,
+    three different structures.
+    """
+    import json
+
+    from shoothighlm.llm import call_ollama
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "response": "hi",
+        "prompt_eval_count": 5,
+        "eval_count": 2,
+    }
+    mock_response.raise_for_status = MagicMock()
+    mock_client.post.return_value = mock_response
+
+    call_ollama(
+        base_url="http://example:11434",
+        model="qwen3.5:cloud",
+        prompt="test",
+        client=mock_client,
+    )
+
+    # The POST should have been called with options.temperature=0 and
+    # options.seed=42 in the JSON body.
+    call_args = mock_client.post.call_args
+    body = call_args.kwargs.get("json") or call_args.args[1]
+    assert "options" in body, "Expected 'options' in the Ollama request body"
+    assert body["options"]["temperature"] == 0.0
+    assert body["options"]["seed"] == 42

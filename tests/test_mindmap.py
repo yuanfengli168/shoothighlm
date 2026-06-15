@@ -587,3 +587,111 @@ def test_render_mindmap_html_has_dark_mode_css():
     assert "background: #1a1b26" in html
     # The h1 should also have an explicit color (not inherited)
     assert "h1" in html and "color" in html
+
+
+# ============== _detect_chapters ==============
+# Regression tests for the "chapters 1-4 of 干法 disappeared" bug.
+# _detect_chapters pre-extracts `第N章` markers from the source text
+# so the LLM prompt can list them as ground truth. Without this, the
+# LLM invents theme names (e.g. "热爱导致成功") instead of using
+# "第 2 章 让自己喜欢上所从事的工作" verbatim.
+
+
+def test_detect_chapters_finds_arabic_numbered():
+    """Arabic-numbered chapter markers like '第 1 章 标题' should match."""
+    from shoothighlm.mindmap import _detect_chapters
+
+    text = (
+        "译者序\n"
+        "前言\n"
+        "第 1 章 磨炼灵魂，提升心志：为什么要工作\n"
+        "我们为什么而工作\n"
+        "第 2 章 让自己喜欢上所从事的工作：如何投入工作\n"
+        "改变心态\n"
+        "第 3 章 以高目标为动力\n"
+        "第 4 章 持续就是力量\n"
+        "第 5 章 追求完美主义\n"
+        "第 6 章 创造性地工作\n"
+        "结语\n"
+    )
+    titles = _detect_chapters(text)
+    assert len(titles) == 6
+    assert titles[0] == "第 1 章 磨炼灵魂，提升心志：为什么要工作"
+    assert titles[1] == "第 2 章 让自己喜欢上所从事的工作：如何投入工作"
+    assert titles[5] == "第 6 章 创造性地工作"
+
+
+def test_detect_chapters_finds_chinese_numbered():
+    """Chinese-numbered markers like '第 一 章' should also match."""
+    from shoothighlm.mindmap import _detect_chapters
+
+    text = (
+        "第 一 章 领导者的资质\n"
+        "内容...\n"
+        "第 二 章 领导者的人格\n"
+        "内容...\n"
+        "第 三 章 领导者的十项职责\n"
+    )
+    titles = _detect_chapters(text)
+    assert len(titles) == 3
+    assert "第 一 章" in titles[0]
+    assert "领导者的人格" in titles[1]
+
+
+def test_detect_chapters_handles_part_and_lecture():
+    """'第N部分' and '第N讲' are also valid chapter-like markers."""
+    from shoothighlm.mindmap import _detect_chapters
+
+    text = (
+        "第一部分 概述\n"
+        "第二部分 详细论述\n"
+        "第 1 讲 开篇\n"
+        "第 2 讲 进阶\n"
+    )
+    titles = _detect_chapters(text)
+    # At least 4 titles found
+    assert len(titles) >= 4
+    assert any("部分" in t for t in titles)
+    assert any("讲" in t for t in titles)
+
+
+def test_detect_chapters_dedupes():
+    """Same chapter marker appearing twice (e.g. in TOC + body) is one entry."""
+    from shoothighlm.mindmap import _detect_chapters
+
+    text = (
+        "目录\n"
+        "第 1 章 标题\n"
+        "...\n"
+        "第 1 章 标题\n"
+        "正文开始\n"
+    )
+    titles = _detect_chapters(text)
+    assert len(titles) == 1
+
+
+def test_detect_chapters_respects_max_titles():
+    """Long books: cap the number of detected titles."""
+    from shoothighlm.mindmap import _detect_chapters
+
+    text = "\n".join(f"第 {i} 章 标题{i}" for i in range(1, 100))
+    titles = _detect_chapters(text, max_titles=10)
+    assert len(titles) == 10
+
+
+def test_detect_chapters_empty_input():
+    """No text → empty list, no crash."""
+    from shoothighlm.mindmap import _detect_chapters
+
+    assert _detect_chapters("") == []
+    assert _detect_chapters("无章节标记的纯文本") == []
+
+
+def test_detect_chapters_skips_nested_markers():
+    """'第 1 章 第 2 章 X' (broken OCR) should not double-count."""
+    from shoothighlm.mindmap import _detect_chapters
+
+    text = "第 1 章 第 2 章 错乱\n"
+    # We want at most the outer one captured.
+    titles = _detect_chapters(text)
+    assert len(titles) <= 1
