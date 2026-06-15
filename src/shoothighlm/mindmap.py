@@ -350,7 +350,12 @@ class MindMapExtractor:
         # 50K-char prompts.
         self.client = httpx.Client(timeout=600.0)
     
-    def extract(self, text: str, title: str = "Document", use_full: bool = False) -> MindMapNode:
+    def extract(
+        self,
+        text: str,
+        title: str = "Document",
+        use_full: bool = False,
+    ) -> tuple[MindMapNode, LLMUsage]:
         """
         Extract mind map structure from text.
 

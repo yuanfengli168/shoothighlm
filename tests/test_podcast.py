@@ -133,12 +133,13 @@ def test_podcast_generator_generate_mock(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, 'post', return_value=mock_response):
-        script = generator.generate("Test text about AI", title="AI Discussion")
+        script, usage = generator.generate("Test text about AI", title="AI Discussion")
         
         assert isinstance(script, PodcastScript)
         assert script.title == "Test Podcast"
         assert len(script.segments) == 2
         assert script.segments[0]["speaker"] == "Alex"
+        assert usage.total == 0
 
 
 def test_podcast_generator_generate_no_json(generator):
@@ -150,12 +151,13 @@ def test_podcast_generator_generate_no_json(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, 'post', return_value=mock_response):
-        script = generator.generate("Test text", title="Test")
+        script, usage = generator.generate("Test text", title="Test")
         
         # Should return fallback script
         assert isinstance(script, PodcastScript)
         assert script.title == "Test"
         assert "Failed to generate" in script.segments[0]["text"]
+        assert usage.total == 0
 
 
 def test_podcast_generator_truncate_long_text(generator):

@@ -1,6 +1,6 @@
 """Podcast script generation from PDF content"""
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
 import json
 import httpx
@@ -143,7 +143,7 @@ class PodcastGenerator:
         title: str = "Document Summary",
         duration_minutes: int = 5,
         use_full: bool = False,
-    ) -> PodcastScript:
+    ) -> Tuple[PodcastScript, LLMUsage]:
         """
         Generate a two-voice podcast script from text.
 
@@ -155,7 +155,8 @@ class PodcastGenerator:
                 higher-fidelity generation on large documents.
 
         Returns:
-            PodcastScript object
+            (script, usage) tuple. `script` is a PodcastScript object;
+            `usage` is LLMUsage with token counts.
         """
         # Truncate if too long. Default 12K uses stratified sampling
         # (start + middle + end) so long books don't just sample the
@@ -223,23 +224,32 @@ class PodcastGenerator:
         
         try:
             data = json.loads(json_str)
-            return PodcastScript(
-                title=data.get("title", title),
-                duration_minutes=data.get("duration_minutes", duration_minutes),
-                host_a_name=data.get("host_a_name", self.host_a_name),
-                host_b_name=data.get("host_b_name", self.host_b_name),
-                segments=data.get("segments", []),
+            return (
+                PodcastScript(
+                    title=data.get("title", title),
+                    duration_minutes=data.get("duration_minutes", duration_minutes),
+                    host_a_name=data.get("host_a_name", self.host_a_name),
+                    host_b_name=data.get("host_b_name", self.host_b_name),
+                    segments=data.get("segments", []),
+                ),
+                usage,
             )
         except json.JSONDecodeError:
             # Fallback: return empty script
-            return PodcastScript(
-                title=title,
-                duration_minutes=duration_minutes,
-                host_a_name=self.host_a_name,
-                host_b_name=self.host_b_name,
-                segments=[
-                    {"speaker": self.host_a_name, "text": "Failed to generate script."},
-                ],
+            return (
+                PodcastScript(
+                    title=title,
+                    duration_minutes=duration_minutes,
+                    host_a_name=self.host_a_name,
+                    host_b_name=self.host_b_name,
+                    segments=[
+                        {
+                            "speaker": self.host_a_name,
+                            "text": "Failed to generate script.",
+                        },
+                    ],
+                ),
+                usage,
             )
     
     def close(self):

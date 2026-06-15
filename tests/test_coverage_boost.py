@@ -158,7 +158,7 @@ def test_extract_data_handles_bare_code_block():
     mock_response.raise_for_status = Mock()
     
     with patch.object(gen.client, "post", return_value=mock_response):
-        info = gen.generate("text", template="summary_card", title="T")
+        info, _usage = gen.generate("text", template="summary_card", title="T")
         # Should not raise — the bare code-block branch is exercised
         assert info.data["summary"] == "S"
     gen.close()

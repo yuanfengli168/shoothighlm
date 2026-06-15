@@ -4,6 +4,7 @@ shootHighLM CLI — Chinese-first, multi-LLM CLI alternative to Google NotebookL
 
 import json
 import os
+import time
 import click
 import httpx
 from rich import print as rprint
@@ -78,6 +79,37 @@ def _config_get(config, *keys: str, default=None):
         if value is None:
             return default
     return value
+
+
+def _log_tokens(
+    notebook_path: Path,
+    *,
+    command: str,
+    source: str,
+    model: str,
+    usage,
+    duration_s: float,
+    status: str,
+    error: str = "",
+) -> None:
+    """Best-effort token logging; never fails a CLI command."""
+    try:
+        from .token_log import TokenLogger
+
+        logger = TokenLogger(notebook_path / "output")
+        logger.log(
+            notebook=notebook_path.name,
+            command=command,
+            source=source,
+            model=model,
+            usage=usage,
+            duration_s=duration_s,
+            status=status,
+            error=error,
+        )
+    except Exception:
+        # Logging must never block normal command output generation.
+        return
 
 
 # Default filename patterns. Each command picks one via `kind=...`.
@@ -395,11 +427,31 @@ def mindmap(notebook: str, fmt: str, output: str, output_dir: str, name_pattern:
 
             rprint(f"  Extracted {len(all_text):,} chars")
             rprint(f"[dim]Extracting mind map with model {chat_model} (prompt: {'50K' if use_full else '25K'} chars)...[/dim]")
+            started = time.monotonic()
             try:
-                mindmap_tree, _usage = extractor.extract(
+                mindmap_tree, usage = extractor.extract(
                     all_text, title=pdf.stem, use_full=use_full
                 )
+                _log_tokens(
+                    notebook_path,
+                    command="mindmap",
+                    source=pdf.name,
+                    model=chat_model,
+                    usage=usage,
+                    duration_s=time.monotonic() - started,
+                    status="ok",
+                )
             except Exception as e:
+                _log_tokens(
+                    notebook_path,
+                    command="mindmap",
+                    source=pdf.name,
+                    model=chat_model,
+                    usage=None,
+                    duration_s=time.monotonic() - started,
+                    status="error",
+                    error=str(e),
+                )
                 if _is_cloud_error(e):
                     rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
                     rprint(_OLLAMA_CLOUD_HINT)
@@ -504,9 +556,29 @@ def flashcard(notebook: str, num: int, fmt: str, output: str, output_dir: str, n
                 continue
 
             rprint(f"[dim]Generating {num} flashcards with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
+            started = time.monotonic()
             try:
-                cards, _usage = generator.generate(all_text, num_cards=num, source=pdf.name, use_full=use_full)
+                cards, usage = generator.generate(all_text, num_cards=num, source=pdf.name, use_full=use_full)
+                _log_tokens(
+                    notebook_path,
+                    command="flashcard",
+                    source=pdf.name,
+                    model=chat_model,
+                    usage=usage,
+                    duration_s=time.monotonic() - started,
+                    status="ok",
+                )
             except Exception as e:
+                _log_tokens(
+                    notebook_path,
+                    command="flashcard",
+                    source=pdf.name,
+                    model=chat_model,
+                    usage=None,
+                    duration_s=time.monotonic() - started,
+                    status="error",
+                    error=str(e),
+                )
                 if _is_cloud_error(e):
                     rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
                     rprint(_OLLAMA_CLOUD_HINT)
@@ -603,9 +675,29 @@ def podcast(notebook: str, duration: int, fmt: str, output: str, output_dir: str
                 continue
 
             rprint(f"[dim]Generating {duration}-minute podcast script with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
+            started = time.monotonic()
             try:
-                script, _usage = generator.generate(all_text, title=pdf.stem, duration_minutes=duration, use_full=use_full)
+                script, usage = generator.generate(all_text, title=pdf.stem, duration_minutes=duration, use_full=use_full)
+                _log_tokens(
+                    notebook_path,
+                    command="podcast",
+                    source=pdf.name,
+                    model=chat_model,
+                    usage=usage,
+                    duration_s=time.monotonic() - started,
+                    status="ok",
+                )
             except Exception as e:
+                _log_tokens(
+                    notebook_path,
+                    command="podcast",
+                    source=pdf.name,
+                    model=chat_model,
+                    usage=None,
+                    duration_s=time.monotonic() - started,
+                    status="error",
+                    error=str(e),
+                )
                 if _is_cloud_error(e):
                     rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
                     rprint(_OLLAMA_CLOUD_HINT)
@@ -789,15 +881,35 @@ def guide(notebook: str, fmt: str, output: str, output_dir: str, name_pattern: s
             return
 
         rprint(f"[dim]Generating guide with {questions} suggested questions (model: {chat_model}, prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
+        started = time.monotonic()
         try:
-            notebook_guide, _usage = generator.generate(
+            notebook_guide, usage = generator.generate(
                 all_text,
                 title=notebook_path.name,
                 sources=sources,
                 num_questions=questions,
                 use_full=use_full,
             )
+            _log_tokens(
+                notebook_path,
+                command="guide",
+                source=",".join(sources),
+                model=chat_model,
+                usage=usage,
+                duration_s=time.monotonic() - started,
+                status="ok",
+            )
         except Exception as e:
+            _log_tokens(
+                notebook_path,
+                command="guide",
+                source=",".join(sources),
+                model=chat_model,
+                usage=None,
+                duration_s=time.monotonic() - started,
+                status="error",
+                error=str(e),
+            )
             if _is_cloud_error(e):
                 rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
                 rprint(_OLLAMA_CLOUD_HINT)
@@ -887,15 +999,35 @@ def infographic(notebook: str, template: str, output: str, output_dir: str, name
             return
 
         rprint(f"[dim]Generating {template} infographic with model {chat_model} (prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
+        started = time.monotonic()
         try:
-            info, _usage = generator.generate(
+            info, usage = generator.generate(
                 all_text,
                 template=template,
                 title=notebook_path.name,
                 sources=sources,
                 use_full=use_full,
             )
+            _log_tokens(
+                notebook_path,
+                command="infographic",
+                source=",".join(sources),
+                model=chat_model,
+                usage=usage,
+                duration_s=time.monotonic() - started,
+                status="ok",
+            )
         except (ValueError, RuntimeError, httpx.HTTPError) as e:
+            _log_tokens(
+                notebook_path,
+                command="infographic",
+                source=",".join(sources),
+                model=chat_model,
+                usage=None,
+                duration_s=time.monotonic() - started,
+                status="error",
+                error=str(e),
+            )
             # RuntimeError from the LLM call may be a cloud error
             if _is_cloud_error(e):
                 rprint(f"[red]✗ Cloud LLM error:[/red] {e}")
@@ -987,9 +1119,29 @@ def tables(notebook: str, max_tables: int, fmt: str, output: str, output_dir: st
                 continue
 
             rprint(f"[dim]Extracting up to {max_tables} tables (model: {chat_model}, prompt: {'50K' if use_full else '12K'} chars)...[/dim]")
+            started = time.monotonic()
             try:
-                tables_found, _usage = extractor.extract(all_text, max_tables=max_tables, source=pdf.name, use_full=use_full)
+                tables_found, usage = extractor.extract(all_text, max_tables=max_tables, source=pdf.name, use_full=use_full)
+                _log_tokens(
+                    notebook_path,
+                    command="tables",
+                    source=pdf.name,
+                    model=chat_model,
+                    usage=usage,
+                    duration_s=time.monotonic() - started,
+                    status="ok",
+                )
             except (RuntimeError, httpx.HTTPError) as e:
+                _log_tokens(
+                    notebook_path,
+                    command="tables",
+                    source=pdf.name,
+                    model=chat_model,
+                    usage=None,
+                    duration_s=time.monotonic() - started,
+                    status="error",
+                    error=str(e),
+                )
                 if _is_cloud_error(e):
                     rprint(f"[red]✗ Cloud LLM error for {pdf.name}:[/red] {e}")
                     rprint(_OLLAMA_CLOUD_HINT)

@@ -57,7 +57,7 @@ def test_generate_summary_card(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, "post", return_value=mock_response):
-        info = generator.generate(
+        info, _usage = generator.generate(
             "Some text about AI and machine learning.",
             template="summary_card",
             title="AI Overview",
@@ -85,7 +85,7 @@ def test_generate_topic_hierarchy(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, "post", return_value=mock_response):
-        info = generator.generate(
+        info, _usage = generator.generate(
             "Text about ML.",
             template="topic_hierarchy",
             title="ML Tree",
@@ -111,7 +111,7 @@ def test_generate_stats_card(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, "post", return_value=mock_response):
-        info = generator.generate(
+        info, _usage = generator.generate(
             "Text about a book.",
             template="stats_card",
             title="Book Stats",
@@ -172,7 +172,7 @@ def test_generate_includes_sources(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, "post", return_value=mock_response):
-        info = generator.generate(
+        info, _usage = generator.generate(
             "text",
             template="summary_card",
             title="T",
@@ -198,7 +198,7 @@ def test_generate_html_is_valid_structure(generator):
     mock_response.raise_for_status = Mock()
     
     with patch.object(generator.client, "post", return_value=mock_response):
-        info = generator.generate("text", template="summary_card", title="T")
+        info, _usage = generator.generate("text", template="summary_card", title="T")
         html = info.html_content
         
         assert html.startswith("<!DOCTYPE html>")
@@ -352,7 +352,7 @@ def test_full_flow_data_to_html(generator):
         mock_response.raise_for_status = Mock()
         
         with patch.object(generator.client, "post", return_value=mock_response):
-            info = generator.generate("text", template=template_name, title="T")
+            info, _usage = generator.generate("text", template=template_name, title="T")
             
             # Each data field should appear in HTML
             html = info.html_content

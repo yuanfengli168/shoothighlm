@@ -19,7 +19,7 @@ Why HTML/CSS over AI image gen:
 """
 
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 import json
 import httpx
@@ -184,7 +184,7 @@ class InfographicGenerator:
         title: str = "Document",
         sources: Optional[List[str]] = None,
         use_full: bool = False,
-    ) -> Infographic:
+    ) -> Tuple[Infographic, LLMUsage]:
         """
         Generate an infographic from text.
 
@@ -197,7 +197,8 @@ class InfographicGenerator:
                 higher-fidelity generation on large documents.
 
         Returns:
-            Infographic object with html_content populated
+          (infographic, usage) tuple. `infographic` has html_content
+          populated; `usage` is LLMUsage with token counts.
 
         Raises:
             ValueError: If template is unknown
@@ -218,7 +219,7 @@ class InfographicGenerator:
                     if not use_full
                     else head_sample(text, max_chars))
 
-        data = self._extract_data(text, template, title)
+        data, usage = self._extract_data(text, template, title)
         if sources:
             data["sources"] = sources
         # Always include the notebook/document title in render data
@@ -226,14 +227,22 @@ class InfographicGenerator:
         
         html = self._render_html(template, data)
         
-        return Infographic(
+        return (
+          Infographic(
             template=template,
             title=title,
             data=data,
             html_content=html,
+          ),
+          usage,
         )
     
-    def _extract_data(self, text: str, template: str, title: str) -> Dict[str, Any]:
+    def _extract_data(
+      self,
+      text: str,
+      template: str,
+      title: str,
+    ) -> Tuple[Dict[str, Any], LLMUsage]:
         """Call LLM to extract structured data per template schema."""
         template_info = TEMPLATES[template]
         
@@ -311,7 +320,7 @@ class InfographicGenerator:
         except json.JSONDecodeError as e:
             raise RuntimeError(f"LLM returned invalid JSON: {e}\n\nResponse was:\n{output[:500]}")
         
-        return data
+        return data, usage
     
     def _extract_json(self, output: str) -> str:
         """Extract JSON from LLM response, handling markdown code blocks."""

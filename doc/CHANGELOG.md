@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### LLM call centralization + token accounting logs
+
+#### Added
+- `src/shoothighlm/llm.py` with shared `call_ollama()` and `LLMUsage`
+  dataclass (input/output/total token counts).
+- `src/shoothighlm/token_log.py` with `TokenLogger` that writes:
+  - `output/tokens.log` (JSONL)
+  - `output/tokens.csv` (CSV)
+- `tests/test_llm.py` and `tests/test_token_log.py` for shared LLM
+  client and token log behavior.
+
+#### Changed
+- All 6 generation flows now use the shared LLM client and return
+  `(result, usage)` tuples internally:
+  - `mindmap`, `flashcard`, `podcast`, `guide`, `infographic`, `tables`
+- CLI now writes one token accounting record per LLM call, including
+  timestamp, command, source, model, token counts, duration, and status.
+- Runtime consistency fix: `podcast` and `infographic` generators now
+  return `(result, LLMUsage)` to match the unified interface.
+
+#### Test Coverage
+- **369 tests passing**, **94.27% coverage**.
+
 ### Index pipeline hardening + cloud-fallback policy
 
 #### Added

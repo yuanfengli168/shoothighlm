@@ -43,8 +43,8 @@ Google NotebookLM is powerful, but it's:
 
 ### Planned
 
-- **LLM Ranking Board** — Benchmark and compare LLMs on book-reading ability (see [ranking-board.md](ranking-board.md))
-- **TUI Interactive Mind Map** — Click a node, chat with AI about it (blue ocean, see [blueOcean.md](blueOcean.md))
+- **LLM Ranking Board** — Benchmark and compare LLMs on book-reading ability (see [doc/ranking-board.md](doc/ranking-board.md))
+- **TUI Interactive Mind Map** — Click a node, chat with AI about it (blue ocean, see [doc/blueOcean.md](doc/blueOcean.md))
 
 ### Not in scope (for now)
 
@@ -311,7 +311,7 @@ shoot-high synthesize ./my-books/output/book1-podcast.md
 | CLI Framework | Textual (TUI) + Click | Interactive mind map + standard CLI |
 | Embedding | bge-m3 | Best Chinese retrieval, 568M params, runs anywhere |
 | Vector DB | sqlite-vec | Lightweight, no server needed |
-| PDF Parsing | docling + marker | Battle-tested, handles complex layouts |
+| PDF Parsing | pypdf (default) + docling (opt-in OCR) | pypdf is fast for text PDFs; docling handles scanned/image-heavy files |
 | Mind Map (TUI) | Textual tree + split-pane chat | Unique CLI interactive experience |
 | Mind Map (HTML) | Markmap.js | Click-to-explore in browser |
 | Mind Map (Export) | OPML, Markdown, XMind, FreeMind, MindManager | Interoperable with all major mind map apps |
@@ -329,17 +329,28 @@ shoot-high synthesize ./my-books/output/book1-podcast.md
 | File count | 50 | Beyond this, retrieval quality degrades |
 | Total tokens | 500K | Beyond this, need batch processing |
 
+## Token Usage Logs
+
+All 6 LLM generation commands append token usage logs under each notebook's
+`output/` folder:
+
+- `output/tokens.log` — JSONL (append-only, one record per LLM call)
+- `output/tokens.csv` — spreadsheet-friendly CSV with the same records
+
+Each record includes timestamp, command, source PDF(s), model,
+input/output/total tokens, duration, status, and error text (if any).
+
 ## Blue Ocean: Interactive Mind Map → AI Chat
 
 No open-source tool does "click mind map node → AI conversation" in the terminal. This is shootHighLM's unique differentiator.
 
-See [blueOcean.md](blueOcean.md) for details.
+See [doc/blueOcean.md](doc/blueOcean.md) for details.
 
 ## LLM Ranking Board (Planned)
 
 Benchmark and rank LLMs on book-reading ability — long document understanding, citation accuracy, cross-chapter reasoning, Chinese text quality. No one does this today.
 
-See [ranking-board.md](ranking-board.md) for the vision.
+See [doc/ranking-board.md](doc/ranking-board.md) for the vision.
 
 ## Troubleshooting
 
@@ -377,16 +388,16 @@ prompts on M1 Max 64GB).
 
 ## Documentation
 
-- [DECISIONS.md](DECISIONS.md) — All project decisions, tech choices, limits
-- [blueOcean.md](blueOcean.md) — Mind map + AI chat blue ocean analysis
-- [ranking-board.md](ranking-board.md) — LLM ranking board concept
+- [doc/DECISIONS.md](doc/DECISIONS.md) — All project decisions, tech choices, limits
+- [doc/blueOcean.md](doc/blueOcean.md) — Mind map + AI chat blue ocean analysis
+- [doc/ranking-board.md](doc/ranking-board.md) — LLM ranking board concept
 - [research/](research/) — Deep research on NotebookLM, LLMs, Ollama Cloud, TTS, infographics
 
 ## Status
 
 ✅ **Phase 3 (P2+P3) Complete** — Podcast, TTS, Notebook Guides, and Infographics all shipped!
 
-**Test Coverage:** 318 tests passing, 94.80% coverage ✅
+**Test Coverage:** 369 tests passing, 94.27% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|
