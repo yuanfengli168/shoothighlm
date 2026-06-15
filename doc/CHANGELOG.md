@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   return `(result, LLMUsage)` to match the unified interface.
 
 #### Test Coverage
-- **369 tests passing**, **94.27% coverage**.
+- **371 tests passing**, **94.39% coverage**.
 
 ### Index pipeline hardening + cloud-fallback policy
 

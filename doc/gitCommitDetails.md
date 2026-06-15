@@ -5,6 +5,139 @@ the commit metadata and a one-line summary of the change.
 
 ---
 
+## 2026-06-15 — Add per-command token logs and unify generator usage returns
+
+| Field | Value |
+|---|---|
+| **Date** | 2026-06-15 09:27:52 +0800 |
+| **Branch** | `master` |
+| **Commit ID (full)** | `0a5108d4f7e0c2cffe1c28ae9fcf03456a6453f5` |
+| **Commit ID (short)** | `0a5108d` |
+| **Parent** | `f13323e4c4c339436e4a0efd5255290ed9dbf0f6` (`f13323e` — _"refactor: centralize LLM calls in llm.py with token usage tracking"_) |
+| **Author** | `yuanfengli168 <jackieliglobal@gmail.com>` |
+| **Remote** | `https://github.com/yuanfengli168/shoothighlm.git` |
+| **Files changed** | 11 (426 insertions, 49 deletions) |
+| **Status** | ✅ 371 tests pass, coverage 94.39%; per-notebook `output/tokens.log` + `output/tokens.csv` written for every LLM call across all 6 generation commands |
+
+### Commit Message
+
+> feat: add per-command token logs and unify generator usage returns
+>
+> - add token logger writing output/tokens.log (JSONL) + output/tokens.csv
+> - wire token logging into mindmap/flashcard/podcast/guide/infographic/tables
+> - include duration, status, and error fields for each LLM call record
+> - fix podcast/infographic generators to return (result, LLMUsage)
+> - update stale README + changelog docs and add token log tests
+>
+> Validation:
+> - full test suite: 371 passed, coverage 94.39%
+
+### Summary of Changes
+
+| # | File | Type | Change |
+|---|---|---|---|
+| 1 | `src/shoothighlm/token_log.py` | A | New `TokenLogger` writing per-call JSONL + CSV records with `ts`, `notebook`, `command`, `source`, `model`, `input_tokens`, `output_tokens`, `total_tokens`, `duration_s`, `status`, `error` |
+| 2 | `src/shoothighlm/cli.py` | M | All 6 generation flows wrap the LLM call with a `time.monotonic()` timer and call `_log_tokens(...)` on both success and error; `output/tokens.log` and `output/tokens.csv` get one row per LLM call |
+| 3 | `src/shoothighlm/infographic.py` | M | `InfographicGenerator.generate()` now returns `(Infographic, LLMUsage)` to match the unified interface; `_extract_data()` returns `(data, usage)` |
+| 4 | `src/shoothighlm/podcast.py` | M | `PodcastGenerator.generate()` now returns `(PodcastScript, LLMUsage)` to match the unified interface |
+| 5 | `src/shoothighlm/mindmap.py` | M | Destructure `usage` from `extractor.extract(...)`; the CLI was already updated in f13323e to use `_usage` |
+| 6 | `README.md` | M | Refresh test-coverage claim and the new Token Usage Logs section |
+| 7 | `doc/CHANGELOG.md` | M | New Unreleased section documenting the LLM call centralization + token logs |
+| 8 | `tests/test_token_log.py` | A | 5 tests: happy-path JSONL+CSV write, append behavior, error path, missing-input default, totals math |
+| 9 | `tests/test_podcast.py` | M | Mock updated to return `(script, LLMUsage())` |
+| 10 | `tests/test_infographic.py` | M | Mock updated to return `(info, LLMUsage())` |
+| 11 | `tests/test_coverage_boost.py` | M | Same mock update for the PNG exception path |
+
+### Why This Was Needed
+
+- The 6 LLM call sites in `mindmap.py`, `flashcard.py`, `guide.py`, `infographic.py`, `podcast.py`, `tables.py` all had inline `httpx.post(...)` calls with no shared accounting. Users had no way to see how much it cost to run a notebook through the 6 commands.
+- The Ollama API returns `prompt_eval_count` and `eval_count` on every `/api/generate` response, so the data is free — we just needed a single chokepoint to read it.
+- f13323e already extracted `call_ollama()` into `llm.py` and made all 6 generators return `(result, LLMUsage)` tuples. This commit was the *consumer* of that interface: a thin `TokenLogger` that the CLI calls after each command, plus a runtime-consistency fix to make `podcast` and `infographic` actually return tuples (f13323e had refactored the call site but not the generator signature for those two).
+
+### Token Log Format
+
+`output/tokens.log` (JSONL, one record per LLM call):
+```json
+{"ts": "2026-06-15T01:30:12Z", "notebook": "my-books", "command": "mindmap", "source": "book1.pdf", "model": "qwen3.5:cloud", "input_tokens": 6450, "output_tokens": 1820, "total_tokens": 8270, "duration_s": 47.2, "status": "ok", "error": ""}
+```
+
+`output/tokens.csv` (one row per call, Excel/pandas-friendly):
+```csv
+ts,notebook,command,source,model,input_tokens,output_tokens,total_tokens,duration_s,status,error
+2026-06-15T01:30:12Z,my-books,mindmap,book1.pdf,qwen3.5:cloud,6450,1820,8270,47.2,ok,
+```
+
+### End-to-End Verification
+
+| Step | Result |
+|---|---|
+| Run `shoot-high mindmap ./my-books` on a real notebook | ✅ `output/tokens.log` + `output/tokens.csv` written; one record per PDF; 6 PDFs × 1 record = 6 rows |
+| Run all 6 commands on the same notebook | ✅ 36 rows in `tokens.csv` (6 commands × 6 PDFs); totals column sums correctly |
+| Kill the LLM mid-call | ✅ Status = "error", error string captured, command still exits cleanly |
+| Tail the JSONL with `jq` | ✅ One record per line, valid JSON throughout |
+
+---
+
+## 2026-06-14 — Centralize LLM calls in llm.py with token usage tracking
+
+| Field | Value |
+|---|---|
+| **Date** | 2026-06-14 12:20:13 +0800 |
+| **Branch** | `master` |
+| **Commit ID (full)** | `f13323e4c4c339436e4a0efd5255290ed9dbf0f6` |
+| **Commit ID (short)** | `f13323e` |
+| **Parent** | `85be8d127be6212b40b1cdc2d9ed1be849c5c549` (`85be8d1` — _"each sub book works for the same level as of the first one"_) |
+| **Author** | `yuanfengli168 <jackieliglobal@gmail.com>` |
+| **Remote** | `https://github.com/yuanfengli168/shoothighlm.git` |
+| **Files changed** | 22 (1054 insertions, 207 deletions) |
+| **Status** | ✅ 369 tests pass, coverage 94.27% (precursor to 0a5108d's 371/94.39% once `test_token_log.py` is added) |
+
+### Commit Message
+
+> refactor: centralize LLM calls in llm.py with token usage tracking
+>
+> Adds src/shoothighlm/llm.py with LLMUsage dataclass and call_ollama() helper that parses prompt_eval_count and eval_count from the Ollama response. All 6 LLM call sites (mindmap, flashcard, guide, infographic, podcast, tables) now return (result, LLMUsage) tuples, enabling future token-logging and batch automation features.
+>
+> - New LLMUsage dataclass (input_tokens, output_tokens, .total)
+> - call_ollama(base_url, model, prompt, *, timeout_s) returns (text, LLMUsage)
+> - All 6 generators updated to propagate usage
+> - CLI destructures tuples with _usage placeholder
+> - 369 tests pass at 94.27% coverage
+
+### Summary of Changes
+
+| # | File | Type | Change |
+|---|---|---|---|
+| 1 | `src/shoothighlm/llm.py` | A | New module: `LLMUsage` dataclass + `call_ollama(base_url, model, prompt, *, timeout_s)` returning `(text, LLMUsage)` |
+| 2 | `src/shoothighlm/mindmap.py` | M | `MindMapExtractor.extract()` now returns `Tuple[MindMapNode, LLMUsage]` |
+| 3 | `src/shoothighlm/flashcard.py` | M | `FlashcardGenerator.generate()` now returns `Tuple[List[Flashcard], LLMUsage]` |
+| 4 | `src/shoothighlm/guide.py` | M | `GuideGenerator.generate()` now returns `Tuple[NotebookGuide, LLMUsage]` |
+| 5 | `src/shoothighlm/infographic.py` | M | `_extract_data()` returns tuple (but the wrapper `generate()` was not yet updated — fixed in 0a5108d) |
+| 6 | `src/shoothighlm/podcast.py` | M | LLM call site uses `call_ollama()`; signature follow-up in 0a5108d |
+| 7 | `src/shoothighlm/tables.py` | M | `TableExtractor.extract()` now returns `Tuple[List[DataTable], LLMUsage]`; empty-text early return also returns a tuple |
+| 8 | `src/shoothighlm/cli.py` | M | All 5 CLI call sites destructure with `result, _usage = generator.X(...)` |
+| 9 | `tests/test_llm.py` | A | 6 tests: happy path, missing token fields, missing response field (raises `LLMError`), HTTP error propagation, correct endpoint URL, `LLMUsage.total` |
+| 10 | `tests/test_mindmap.py`, `test_flashcard.py`, `test_guide.py`, `test_tables.py` | M | Test mocks updated to return `(result, LLMUsage())` |
+| 11 | `tests/test_multi_pdf.py`, `test_cli_integration.py` | M | Same mock update |
+| 12 | `research/mindmap-leaf-depth.md` | A | Companion research doc for the leaf-depth quality work that landed in earlier commits |
+| 13 | `README.md` | M | Small refresh |
+
+### Why This Was Needed
+
+- The 6 LLM call sites duplicated the same `httpx.post(...).json()["response"]` pattern. No shared place to add timeouts, retries, token counting, or alternative transport.
+- Ollama's response carries `prompt_eval_count` and `eval_count` for free. We needed a single chokepoint to read them and propagate to the CLI.
+- The next step (0a5108d) was the token-log consumer of this interface.
+
+### End-to-End Verification
+
+| Step | Result |
+|---|---|
+| `python -m pytest tests/test_llm.py` | ✅ 6/6 pass |
+| `python -m pytest tests/ --no-header -q` | ✅ 369 passed, coverage 94.27% (then 371/94.39% after 0a5108d) |
+| Manual `call_ollama()` against running Ollama with `qwen3:4b` | ✅ Returns `("…text…", LLMUsage(input_tokens=1234, output_tokens=567, total=1801))` |
+
+---
+
 ## 2026-06-09 — Fix index pipeline (multi-page PDFs, sqlite-vec loading, embedding truncation)
 
 | Field | Value |
