@@ -1214,5 +1214,109 @@ def tables(notebook: str, max_tables: int, fmt: str, output: str, output_dir: st
         extractor.close()
 
 
+@main.command()
+@click.argument("notebook", type=click.Path(exists=True))
+@click.option(
+    "--include",
+    "include",
+    default=None,
+    help="Comma-separated list of commands to run (e.g. 'mindmap,flashcard'). "
+         "If set, ONLY these commands run. Overrides --exclude.",
+)
+@click.option(
+    "--exclude",
+    "exclude",
+    default=None,
+    help="Comma-separated list of commands to skip (e.g. 'mindmap,index').",
+)
+@click.option("--model", "model", default=None, help="Override chat model")
+@click.option(
+    "--use-local",
+    is_flag=True,
+    help="Use the local chat model (models.chat_local) instead of cloud",
+)
+@click.option(
+    "--full",
+    "use_full",
+    is_flag=True,
+    help="Use a larger prompt (50K chars vs 12-25K default) for higher fidelity",
+)
+@click.option(
+    "--workers",
+    "-w",
+    default=1,
+    type=int,
+    help="Number of parallel workers. 1 = serial. Most LLM calls are I/O-bound, "
+         "so 2-4 workers usually saturate a cloud model.",
+)
+@click.option(
+    "--resume",
+    is_flag=True,
+    help="Skip jobs that already completed (reads .batch-state.json)",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Plan the jobs and print what would run, without making LLM calls",
+)
+def batch(
+    notebook: str,
+    include: str,
+    exclude: str,
+    model: str,
+    use_local: bool,
+    use_full: bool,
+    workers: int,
+    resume: bool,
+    dry_run: bool,
+):
+    """Run multiple generation commands across every PDF in a notebook.
+
+    Default: runs all 6 commands (mindmap, flashcard, podcast, guide,
+    infographic, tables) on every PDF. Use --include / --exclude to narrow
+    the set. Use --workers N to parallelize. Use --resume to pick up after
+    a failed batch.
+    """
+    from .batch import BatchRunner, parse_csv_list
+
+    notebook_path = Path(notebook)
+    pdfs = sorted(notebook_path.glob("*.pdf"))
+    if not pdfs:
+        rprint("[red]No PDFs found in notebook[/red]")
+        return
+
+    include_list = parse_csv_list(include)
+    exclude_list = parse_csv_list(exclude) or []
+
+    runner = BatchRunner(
+        notebook_path,
+        include=include_list,
+        exclude=exclude_list,
+        use_full=use_full,
+        model=model,
+        use_local=use_local,
+        workers=workers,
+        resume=resume,
+        dry_run=dry_run,
+    )
+
+    cmds = runner.filter_commands()
+    rprint(
+        f"[green]Batch plan:[/green] {len(cmds)} command(s) × {len(pdfs)} PDF(s) = "
+        f"{len(cmds) * len(pdfs)} job(s)"
+    )
+    rprint(f"  Commands: {', '.join(c.name for c in cmds)}")
+    rprint(f"  PDFs:     {', '.join(p.name for p in pdfs)}")
+    if workers > 1:
+        rprint(f"  Workers:  {workers}")
+    if resume:
+        rprint(f"  Resume:   on (state: {runner.state_path})")
+    if dry_run:
+        rprint(f"  Dry-run:  on (no LLM calls)")
+
+    summary = runner.run()
+    rprint(summary.render())
+
+
 if __name__ == "__main__":
     main()
