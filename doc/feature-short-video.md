@@ -1,7 +1,7 @@
 # Short Video Generation (`shoot-high short`)
 
 > **Status:** 🟡 **Design** (no code yet — see Implementation Plan at the bottom)
-> **Last updated:** 2026-06-15
+> **Last updated:** 2026-06-15 (Q1=A, Q2=C — per-book = 5min 纪录短片; no TTS in v1)
 > **Author:** yuanfengli168 + Copilot
 
 ## Motivation
@@ -37,13 +37,21 @@ shape. We need a new command.
 
 ## Scope of v1 (this design)
 
+**Two product shapes, one command:**
+
+| Mode | What it is | Default duration | Default style | Use case |
+|---|---|---|---|---|
+| **Per-book** (default) | 1 个连续脚本 = 1 个短视频 = 整本书的"纪录短片" | **5 分钟** (300s) | **纪录短片** (new) | "用 5 分钟给我讲完这本书" — B 站/小红书/YouTube 中视频 |
+| **Per-chapter** (`--chapter` / `--per-chapter`) | 1 个 60s 脚本 = 1 个短视频 = 一章的核心 | **60-90s** | 4 种风格可选 (反常识/励志/学术/吐槽) | 抖音/快手/TikTok 短视频投放 |
+
 **In scope:**
 
-- Script generation (text, 60-90s, scene-by-scene)
+- Script generation (text, scene-by-scene) for both shapes
 - Visual direction (per-scene: what to show, what B-roll to find, what
   text to overlay)
-- Multiple styles (反常识 / 励志 / 学术 / 吐槽)
-- Multiple platforms (抖音 / B 站 / YouTube Shorts — same script, different
+- Per-book style: 纪录短片 (single default for v1, more in v2)
+- Per-chapter styles: 反常识 / 励志 / 学术 / 吐槽
+- Multiple platforms (抖音 / B 站 / YouTube — same script, different
   pacing and language)
 - Per-chapter OR per-book (one short per chapter, or one short for the
   whole book)
@@ -65,31 +73,40 @@ If the user wants any of the out-of-scope items, that's a v2 follow-up
 ## Command surface
 
 ```bash
-# Default: one short video for the whole book (60s, 反常识 style, 抖音 pacing)
+# Per-book (default): 1 个 5 分钟的"纪录短片"
 shoot-high short ~/my-books
+# = shoot-high short ~/my-books --book --duration 300 --style 纪录短片
 
-# Per-chapter: one short per detected chapter (writes N output files)
-shoot-high short ~/my-books --per-chapter
+# Per-book 但压到 1 分钟（"用 60s 给我讲完这本书"）
+shoot-high short ~/my-books --book --duration 60
 
-# Just one chapter
+# Per-book 但压到 90s（抖音友好）
+shoot-high short ~/my-books --book --duration 90
+
+# Per-chapter: 1 个 60-90s 视频 = 一章
 shoot-high short ~/my-books --chapter "第 1 章 磨炼灵魂 提升心志"
 shoot-high short ~/my-books --chapter "第 1 章"        # prefix match is OK
 
-# Style
-shoot-high short ~/my-books --style 反常识           # default
-shoot-high short ~/my-books --style 励志
-shoot-high short ~/my-books --style 学术
-shoot-high short ~/my-books --style 吐槽             # 脱口秀/单口喜剧 style
+# Per-chapter × N: 整本书每个章节一个视频
+shoot-high short ~/my-books --per-chapter
+
+# Per-chapter 风格 (4 种)
+shoot-high short ~/my-books --chapter "第 1 章" --style 反常识   # default
+shoot-high short ~/my-books --chapter "第 1 章" --style 励志
+shoot-high short ~/my-books --chapter "第 1 章" --style 学术
+shoot-high short ~/my-books --chapter "第 1 章" --style 吐槽     # 脱口秀/单口喜剧
 
 # Platform pacing
 shoot-high short ~/my-books --platform douyin        # default; 快节奏
 shoot-high short ~/my-books --platform bilibili      # 中长,可有几句"黑话"
 shoot-high short ~/my-books --platform youtube       # 英文 Shorts
 
-# Duration
-shoot-high short ~/my-books --duration 30
-shoot-high short ~/my-books --duration 60            # default
-shoot-high short ~/my-books --duration 90
+# Duration (default depends on mode; see above)
+shoot-high short ~/my-books --book --duration 300     # explicit
+shoot-high short ~/my-books --book --duration 60
+shoot-high short ~/my-books --book --duration 90
+shoot-high short ~/my-books --chapter "第 1 章" --duration 60
+shoot-high short ~/my-books --chapter "第 1 章" --duration 90
 
 # Variants (output 3 versions at once, user picks the best)
 shoot-high short ~/my-books --variants 3
@@ -101,6 +118,12 @@ shoot-high short ~/my-books --format srt             # subtitle file (just the s
 ```
 
 ## Output format (default: markdown)
+
+The output format is the same shape regardless of per-book / per-chapter
+— it's always a 3-act script. The difference is in the **act structure**
+and the **word count** (which controls the duration).
+
+### Per-chapter sample (60-90s, 4 幕)
 
 ```markdown
 # 短视频脚本：干法 第 1 章 磨炼灵魂，提升心志
@@ -151,6 +174,81 @@ shoot-high short ~/my-books --format srt             # subtitle file (just the s
 - [ ] 转场：用"闪白"或"淡入淡出"，1 秒以内
 ```
 
+### Per-book sample (5 分钟, 纪录短片 风格, 6 幕)
+
+Per-book uses a **3-act macro structure** (cold-open → arc → 收束), not
+4 幕. 5 分钟可以容纳 2-3 个完整的 hook→payoff 循环（per-chapter 的 1
+个不够），所以 act 数量更多。
+
+```markdown
+# 短视频脚本：干法 稻盛和夫 5 分钟讲完
+
+## 🎬 视频元信息
+
+- **时长：** 5 分钟（约 750 字 / 普通话 2.5 字/秒）
+- **风格：** 纪录短片（中性 + 数据 + 故事 + 结论）
+- **平台：** B 站（5 分钟短纪录片，目标观众耐心高一点）
+- **建议配音：** 男声，中低音，30-40 岁，语速中等
+- **建议背景音乐：** 前 1 分钟低沉钢琴，中段加入柔和弦乐，结尾留白
+- **目标受众：** 25-40 岁职场人 + 创业者，对稻盛和夫/工作哲学有兴趣
+
+## 🎬 冷开场（0-20 秒）｜ 钩子：1 个具体数字
+
+> 字幕（大字）：**"1 年 / 破产 → 全球第一"**
+> 配音：2010 年 2 月，日航申请破产保护。1 年零 3 个月后，它的利润率做到了全世界 727 家航空公司里的第一名。
+> 视觉：黑屏 + 字幕 "2010" → 切换到日航飞机停在停机坪的远景 → 字幕浮现 "全球第一"
+
+## 📍 段落 1：人物（20-90 秒）｜ 这个人是谁？
+
+> 配音：接下这个烂摊子的人，叫稻盛和夫。他是个科学家，27 岁创办了京瓷，又在 52 岁时创办了 KDDI。这两家公司都做进了世界 500 强。然后他退休，去当和尚了。
+> 字幕卡：稻盛和夫 / 1932- / 科学家 / 企业家 / 哲学家 / 78 岁出山
+> 视觉：稻盛和夫年轻时实验室照片 → 中年西装照 → 老年僧袍照（三连拍，每张 5 秒）
+
+## ⚡ 段落 2：方法（90-210 秒）｜ 他做了什么？
+
+> 配音：他做的第一件事不是改革，是重新定义"工作"。他在《干法》里写：劳动是万病良药，工作能磨炼灵魂。
+> 字幕卡（30 秒卡，固定不动）：**"工作 = 磨炼灵魂"**
+> 视觉：书的封面特写（5 秒）→ 一段稻盛和夫讲"为什么工作"的演讲片段（带字幕，60 秒）→ 切换到员工鼓掌照片（5 秒）
+
+> 配音：第二件事：把哲学落到每天的细节。每天晨会念公司哲学 30 分钟；每个员工必须背会"六项精进"；管理者不能比员工早下班。
+> 字幕卡：**"6 项精进 / 每天晨会 30 分钟 / 管理者最后走"**
+> 视觉：剪影动画（员工 → 晨会 → 朗读哲学 → 下班）配时间线（90 秒流程图）
+
+## 🎯 段落 3：结果（210-270 秒）｜ 数据落地
+
+> 配音：一年后，日航的营业利润从亏损 1800 亿日元，到盈利 1800 亿。员工满意度，从 2010 年的全行业最低，2013 年变成全行业最高。
+> 字幕卡（数字大字）：**"-1800 亿 → +1800 亿"**（停留 8 秒）
+> 字幕卡：**"员工满意度：行业最低 → 行业最高"**（停留 5 秒）
+> 视觉：财务报表（黑底红字 → 黑底绿字，2 秒反转动画）
+
+## 🧠 收束（270-300 秒）｜ 一句话总结 + 留钩
+
+> 配音：稻盛和夫说，工作的意义不是赚钱，是磨炼灵魂。这本书叫《干法》，讲的就是这个。
+> 字幕卡（最后一帧，停留 8 秒）：**"工作 = 磨炼灵魂"** + **《干法》** 封面 + **"shootHighLM 读书会"**
+> 视觉：黑屏 → 字幕浮现 → 书的封面（2 秒）→ 黑屏
+
+## 📋 后期清单（用户在 CapCut 里 30 分钟搞定）
+
+- [ ] 找到 1 段日航破产新闻（2010，搜索："JAL bankruptcy 2010"）
+- [ ] 找到 3 张稻盛和夫的照片（年轻/中年/老年，分别搜索"Kazuo Inamori young", "Kazuo Inamori KDDI", "稻盛和夫 僧袍"）
+- [ ] 找到 1 段稻盛和夫演讲片段（B 站搜："稻盛和夫 工作"）
+- [ ] 找到 1 段日航员工鼓掌照片（搜索："JAL employees celebration 2013"）
+- [ ] 找到 1 张《干法》书籍封面
+- [ ] 找到 1 段剪影动画素材（剪映搜"团队合作剪影"或"职场剪影"）
+- [ ] 录制配音（750 字，5 分钟；用剪映"图文成片"也行）
+- [ ] 背景音乐：剪映搜"纪录片配乐"，选 1 段（推荐 5-6 分钟的连续 BGM）
+- [ ] 数字字幕：剪映"花字"模板里的"大字弹出"效果（关键 3 个数字：-1800 → +1800、最低 → 最高、1 年）
+- [ ] 转场：段落间用"2 秒黑场 + 字幕卡"（这是纪录片的标志节奏）
+- [ ] 字幕样式：剪映"纪录片白字黑边"，32 字号，每行 ≤ 22 字
+
+### 为什么是 6 幕而不是 4 幕？
+
+- 4 幕（hook/conflict/turn/payoff）适合 60s 紧凑节奏
+- 5 分钟需要"人物介绍 + 方法 + 数据 + 收束"4 个独立信息块，外加开场钩子和结尾
+- 6 幕 = 钩子 + 人物 + 方法 + 数据 + 收束 + 一句话总结
+- 每幕 30-60s，5 分钟能容纳；压缩到 4 幕会丢掉"人物"和"数据"两块
+```
+
 ## Output format (JSON, for tooling)
 
 ```json
@@ -197,14 +295,26 @@ shoot-high short ~/my-books --format srt             # subtitle file (just the s
 
 ## Design decisions
 
-### 1. Why 60-90s and not 30s or 3 min?
+### 1. Why 60-90s for per-chapter, and 5 min for per-book?
 
-- **30s is too short** to deliver an actual argument with hook →
-  conflict → resolution. You can do a punchline but not a takeaway.
-  Useful for "quote of the day" but not "I learned X from chapter Y".
-- **3 min is too long** for short-video platforms. The completion rate
-  drops past 90s on every major platform (Douyin, Shorts, TikTok).
-- **60-90s is the sweet spot** for "one idea, well told".
+These are **two different artifacts** with different optimal lengths:
+
+- **Per-chapter (60-90s):** 1 chapter is ~20 pages, ~6000 chars. The
+  right "深度" for a 60-90s 短视频 is "1 idea, well told" — hook,
+  conflict, payoff, CTA. Past 90s the completion rate on Douyin /
+  Shorts / TikTok drops sharply. Past 2 min you've lost the
+  short-video audience.
+- **Per-book (5 min):** 1 book is ~250-1000 pages. 60s cannot do it
+  justice (you'd reduce 《干法》 to "稻盛和夫说努力工作" which is
+  true but useless). 5 min is the **sweet spot for "短纪录片"** —
+  enough for 人物介绍 + 方法展开 + 数据落地 + 收束. Past 8 min
+  we're competing with the existing `podcast` command. Past 10 min
+  we're competing with Bilibili mid-form video (a different
+  audience).
+
+The 5-min cap is intentional — v1 doesn't try to replace the
+`podcast` command's 8-min 2-host format or Bilibili's 20-min review
+videos. We sit **between** them.
 
 ### 2. Why not just use the podcast script and trim it?
 
@@ -263,7 +373,7 @@ which is a different artifact.
 
 ## Implementation plan (when the user says "go")
 
-### Step 1 — `src/shoothighlm/short.py` (~3-4 hours)
+### Step 1 — `src/shoothighlm/short.py` (~4-5 hours)
 
 ```python
 class ShortVideoGenerator:
@@ -275,26 +385,37 @@ class ShortVideoGenerator:
         text: str,
         *,
         title: str = "Document",
-        chapter: Optional[str] = None,  # e.g. "第 1 章 磨炼灵魂..."
-        style: str = "反常识钩子",  # or 励志 / 学术 / 吐槽
+        mode: str = "per_book",  # "per_book" (default) or "per_chapter"
+        chapter: Optional[str] = None,  # only for per_chapter
+        style: str = "纪录短片",  # per_book: 纪录短片; per_chapter: 反常识/励志/学术/吐槽
         platform: str = "douyin",  # or bilibili / youtube
-        duration_s: int = 60,
+        duration_s: Optional[int] = None,  # None → 300 for per_book, 60 for per_chapter
         variants: int = 1,
     ) -> List[ShortVideoScript]:
         ...
 ```
 
 The `generate()` method:
-1. Sample the text (use existing `even_sample` / `head_sample` from
-   `sampling.py`).
-2. If `chapter` is set, slice the text to roughly that chapter's
-   range (reuse the `_detect_chapters` helper from `mindmap.py`).
-3. Build a prompt with style + platform instructions + the
-   sample text.
-4. Call `call_ollama()` (the deterministic one we just made).
+1. If `mode == "per_chapter"` and `chapter` is set, slice the text to
+   that chapter's range (reuse `_detect_chapters` from `mindmap.py`).
+   If `per_chapter` and no `chapter` set, error.
+2. Sample the text (use `even_sample` / `head_sample` from
+   `sampling.py`). For per-book 5 min, the 50K-char full sample is
+   enough (matches mindmap); for per-chapter 60s, even smaller.
+3. Build the prompt — use **per-chapter template** or **per-book
+   template** (see "What the LLM needs to know" above).
+4. Call `call_ollama()` (deterministic, temperature=0, seed=42).
 5. Parse the response into `ShortVideoScript` (Pydantic model).
-6. Repeat for `variants` (just call N times — LLM will produce
-   different ones thanks to its own internal sampling).
+6. Repeat for `variants` (N times — LLM will produce different
+   ones thanks to its own internal randomness, even with
+   temperature=0, due to model-load-time variations).
+
+Two different prompt templates means two different LLM-call functions:
+- `generate_per_chapter(...)` → 4-act script
+- `generate_per_book(...)` → 6-act script
+
+Both share the same parsing + output-format code; only the prompt
+template and the act-count validation differ.
 
 ### Step 2 — `shoot-high short` CLI command in `cli.py` (~30 min)
 
@@ -332,10 +453,15 @@ def short(notebook, chapter, per_chapter, style, platform, duration, variants, f
 
 ## What the LLM needs to know (the prompt)
 
+The prompt differs by **mode** (per-book vs per-chapter). Per-chapter
+is the original 4-act shape; per-book is a 6-act documentary shape.
+
+### Per-chapter prompt (60-90s)
+
 ```
 You are a Chinese short-video script writer. Your job is to compress
-the source text into a 60-second script with a hook, conflict, turn,
-and payoff.
+ONE CHAPTER of the source text into a {duration_s}-second script with
+a hook, conflict, turn, and payoff.
 
 STYLE: {style}
   - 反常识: open with a counterintuitive fact. "Most people think X.
@@ -375,7 +501,77 @@ RULES:
 - Do NOT use words that don't appear in the source text. If the
   book doesn't mention a number, don't make up a number.
 
-SOURCE TEXT:
+SOURCE TEXT (this chapter only):
+{text}
+```
+
+### Per-book prompt (5 min, 纪录短片)
+
+```
+You are a Chinese short-documentary script writer. Your job is to
+compress the SOURCE TEXT (a full book) into a {duration_s}-second
+script with a 3-act documentary structure: cold-open + arc + 收束.
+
+STYLE: 纪录短片 (default, only option for per-book in v1)
+  - Tone: neutral, observational, with data + story + conclusion.
+    Think 《纽约时报》The Daily condensed to 5 min, or a
+    Vox explainer.
+  - No hot takes, no controversy, no "you'll never believe".
+    This is NOT a YouTube thumbnail — it's a thoughtful summary
+    for someone who has 5 minutes and wants to actually
+    understand the book.
+  - Voice: third person, "稻盛和夫做了 X" / "数据显示 Y". Not
+    "你应该 X".
+
+PLATFORM: {platform}
+  - douyin: not recommended for 5 min (5 min exceeds 抖音's
+    sweet spot). Use bilibili or youtube.
+  - bilibili: scenes 30-60s each, subtitles 20-35 字/行, 1.0×
+    cut speed, 2-second black-card transitions between acts
+  - youtube (English): scenes 45-90s each, captions
+    10-18 words/line, 1.0× cut, English narration
+
+DURATION: {duration_s} seconds. Target word count = duration × 2.5
+  (Chinese: 2.5 字/秒 normal pace). For 300s, that's ~750 字.
+
+OUTPUT FORMAT: 6 acts (cold-open, 人物, 方法, 数据, 收束, 一句话总结).
+  Each act has voiceover (narration text), caption (字幕卡 text),
+  visual (description + image search keywords), bgm (mood).
+
+ACT-BY-ACT STRUCTURE (for 5 min):
+- 冷开场 (0-20s, ~50 字): a single specific number / concrete
+  fact that grabs attention. The hook IS the data, not a story.
+  Example: "2010 年 2 月，日航申请破产保护。1 年零 3 个月后，
+  它的利润率做到了全世界 727 家航空公司里的第一名。"
+- 人物 (20-90s, ~175 字): who is this person? 3 key facts.
+  Establish credibility without biography dump.
+- 方法 (90-210s, ~300 字): what did they actually DO? The
+  concrete steps / philosophy / methodology. This is the longest
+  act because it's the value delivery.
+- 数据 (210-270s, ~150 字): what were the measurable outcomes?
+  Specific numbers, before/after. Show don't tell.
+- 收束 (270-290s, ~50 字): one sentence takeaway that connects
+  back to the cold-open's data point. Symmetry.
+- 一句话总结 (290-300s, ~25 字): the ONE thing the viewer should
+  remember. Make it quotable, screenshot-able.
+
+RULES:
+- The cold-open MUST lead with a specific number, not a story.
+  "1 年 / 破产 → 全球第一" is GOOD. "他做了一件不可思议的事"
+  is BAD.
+- Every act's voiceover MUST be 50-300 字. Going over 300 in a
+  single act means the structure is wrong (you tried to fit 2 acts
+  in 1).
+- The 方法 act is the longest. If another act is longer, the
+  script is wrong.
+- Use the book's actual numbers. "公司员工从 1000 增加到 5000"
+  is GOOD if that's in the book. "公司员工增长 5 倍" is BAD
+  unless the book says that exact phrasing.
+- The 一句话总结 MUST be a quotable, screenshot-able sentence.
+  "工作不是为钱，是磨炼灵魂" is GOOD. "这本书告诉我们很多
+  关于工作的道理" is BAD.
+
+SOURCE TEXT (the full book, may be summarized):
 {text}
 ```
 
@@ -393,16 +589,51 @@ SOURCE TEXT:
 
 ## Open questions for the user
 
-1. **Is "60-90s" the right target?** Or do you want 30s / 2 min / longer?
-2. **Do you want per-chapter default or per-book default?** I'm leaning
-   per-chapter (better compression), but per-book is what most people
-   search for ("1 minute summary of X").
-3. **Do you want auto-TTS in v1, or is the script-only v1 enough?**
-4. **English or Chinese as the default target language?** I'd default
+(Updated 2026-06-15 — Q1, Q2, Q3 from the original list are now
+resolved. Removing them, keeping the open ones + new questions
+raised by the per-book 5min addition.)
+
+~~1. Is "60-90s" the right target?~~ — **Resolved: 60-90s for
+per-chapter, 5min for per-book.**
+
+~~2. Per-chapter default or per-book default?~~ — **Resolved:
+per-book is default (5min 纪录短片), per-chapter via `--chapter`
+or `--per-chapter`. User chose this on 2026-06-15.**
+
+~~3. Auto-TTS in v1?~~ — **Resolved: NO TTS in v1. User produces
+audio in CapCut from the script we provide.**
+
+Remaining open questions:
+
+1. **English or Chinese as the default target language?** I'd default
    to "the book's language" (auto-detect), but if you have a strong
-   preference I can hard-code it.
-5. **Should we add `shoot-high short` to the `shoot-high batch`
+   preference I can hard-code it. — *2026-06-15: still open.*
+
+2. **Should we add `shoot-high short` to the `shoot-high batch`
    default?** That is, should `shoot-high batch` include `short` in
    its command registry? Probably **no** (short is a different
    artifact, often you only want 1-2 of them, not all 6+1 per book),
-   but worth confirming.
+   but worth confirming. — *2026-06-15: still open.*
+
+3. **NEW: 5 min output for collections** — when the source is a
+   multi-book collection (e.g. the 6-book 稻盛和夫 收藏版), does
+   `shoot-high short <notebook>` (per-book) make ONE 5-min video
+   for the whole collection, or ONE 5-min video PER sub-book?
+   My lean: ONE 5-min for the whole collection (user can
+   `--per-chapter` or do per-sub-book batch later). Confirm?
+
+4. **NEW: Default 纪录短片 platform** — should `shoot-high short
+   <notebook>` (per-book) auto-pick `bilibili` since 5 min exceeds
+   抖音's sweet spot, or stay on `douyin` and let the user override?
+   My lean: keep `douyin` as default (consistent with per-chapter
+   + the LLM will just produce content that performs better on
+   bilibili for 5 min, no big deal). Confirm?
+
+5. **NEW: Variant reproducibility** — for per-chapter `--variants 3`,
+   each variant goes through the LLM. With `temperature=0` + same
+   `seed=42`, we expect 3 DIFFERENT outputs because the prompt
+   structure changes per variant. But are the variants "real
+   alternatives" (different hooks, different angles) or "3 random
+   near-duplicates"? The LLM tends toward the latter unless we
+   explicitly ask for differentiation in the prompt. Worth
+   confirming after v1 ships with a real test.
