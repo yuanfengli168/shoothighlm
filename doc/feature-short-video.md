@@ -1,7 +1,7 @@
 # Short Video Generation (`shoot-high short`)
 
-> **Status:** 🟡 **Design** (no code yet — see Implementation Plan at the bottom)
-> **Last updated:** 2026-06-15 (Q1=A, Q2=C — per-book = 5min 纪录短片; no TTS in v1)
+> **Status:** 🟡 **Design LOCKED-IN** (all open questions resolved 2026-06-16 — no code yet; see Implementation Plan at the bottom)
+> **Last updated:** 2026-06-16
 > **Author:** yuanfengli168 + Copilot
 
 ## Motivation
@@ -97,7 +97,9 @@ shoot-high short ~/my-books --chapter "第 1 章" --style 学术
 shoot-high short ~/my-books --chapter "第 1 章" --style 吐槽     # 脱口秀/单口喜剧
 
 # Platform pacing
-shoot-high short ~/my-books --platform douyin        # default; 快节奏
+# Per-chapter default: douyin. Per-book default: xiaohongshu.
+shoot-high short ~/my-books --platform douyin        # per-chapter default; 快节奏
+shoot-high short ~/my-books --platform xiaohongshu   # per-book default; 视频笔记
 shoot-high short ~/my-books --platform bilibili      # 中长,可有几句"黑话"
 shoot-high short ~/my-books --platform youtube       # 英文 Shorts
 
@@ -388,7 +390,8 @@ class ShortVideoGenerator:
         mode: str = "per_book",  # "per_book" (default) or "per_chapter"
         chapter: Optional[str] = None,  # only for per_chapter
         style: str = "纪录短片",  # per_book: 纪录短片; per_chapter: 反常识/励志/学术/吐槽
-        platform: str = "douyin",  # or bilibili / youtube
+        language: str = "auto",  # auto-detect | "zh" | "en" (resolved per book)
+        platform: Optional[str] = None,  # None → "xiaohongshu" for per_book, "douyin" for per_chapter
         duration_s: Optional[int] = None,  # None → 300 for per_book, 60 for per_chapter
         variants: int = 1,
     ) -> List[ShortVideoScript]:
@@ -396,17 +399,25 @@ class ShortVideoGenerator:
 ```
 
 The `generate()` method:
-1. If `mode == "per_chapter"` and `chapter` is set, slice the text to
-   that chapter's range (reuse `_detect_chapters` from `mindmap.py`).
-   If `per_chapter` and no `chapter` set, error.
-2. Sample the text (use `even_sample` / `head_sample` from
+1. **Detect language** (if `language == "auto"`): scan the text for
+   CJK vs Latin character ratio. >30% CJK → "zh", else "en". This
+   becomes the script's output language and the LLM is told.
+2. **Detect sub-books** (via `_detect_sub_books` from `mindmap.py`).
+   If `mode == "per_book"` AND `len(sub_books) > 1`, recurse: for
+   each sub-book, slice the text to that sub-book's
+   `[start, end)` range and emit one 5-min video per sub-book.
+   Output filenames: `output/short-{subbook-stem}-book.md`.
+3. If `mode == "per_chapter"` and `chapter` is set, slice the text
+   to that chapter's range (reuse `_detect_chapters` from
+   `mindmap.py`). If `per_chapter` and no `chapter` set, error.
+4. Sample the text (use `even_sample` / `head_sample` from
    `sampling.py`). For per-book 5 min, the 50K-char full sample is
    enough (matches mindmap); for per-chapter 60s, even smaller.
-3. Build the prompt — use **per-chapter template** or **per-book
+5. Build the prompt — use **per-chapter template** or **per-book
    template** (see "What the LLM needs to know" above).
-4. Call `call_ollama()` (deterministic, temperature=0, seed=42).
-5. Parse the response into `ShortVideoScript` (Pydantic model).
-6. Repeat for `variants` (N times — LLM will produce different
+6. Call `call_ollama()` (deterministic, temperature=0, seed=42).
+7. Parse the response into `ShortVideoScript` (Pydantic model).
+8. Repeat for `variants` (N times — LLM will produce different
    ones thanks to its own internal randomness, even with
    temperature=0, due to model-load-time variations).
 
@@ -589,9 +600,7 @@ SOURCE TEXT (the full book, may be summarized):
 
 ## Open questions for the user
 
-(Updated 2026-06-15 — Q1, Q2, Q3 from the original list are now
-resolved. Removing them, keeping the open ones + new questions
-raised by the per-book 5min addition.)
+(Updated 2026-06-16 — all open questions resolved by user.)
 
 ~~1. Is "60-90s" the right target?~~ — **Resolved: 60-90s for
 per-chapter, 5min for per-book.**
@@ -603,37 +612,64 @@ or `--per-chapter`. User chose this on 2026-06-15.**
 ~~3. Auto-TTS in v1?~~ — **Resolved: NO TTS in v1. User produces
 audio in CapCut from the script we provide.**
 
-Remaining open questions:
+All 5 open questions answered by user on 2026-06-16:
 
-1. **English or Chinese as the default target language?** I'd default
-   to "the book's language" (auto-detect), but if you have a strong
-   preference I can hard-code it. — *2026-06-15: still open.*
+1. **Default target language** — **AUTO-DETECT from the book's
+   language.** The `ShortVideoGenerator.detect_language()` helper
+   will scan the source text for CJK vs Latin character ratio and
+   pick Chinese (zh) or English (en) accordingly. The LLM is then
+   told to write the script in the detected language. `--language`
+   flag lets the user override.
 
-2. **Should we add `shoot-high short` to the `shoot-high batch`
-   default?** That is, should `shoot-high batch` include `short` in
-   its command registry? Probably **no** (short is a different
-   artifact, often you only want 1-2 of them, not all 6+1 per book),
-   but worth confirming. — *2026-06-15: still open.*
+2. **`shoot-high short` in `shoot-high batch`?** — **NO.** Short
+   video is a deliberately-paced artifact (one per book or one
+   per chapter), not a "run all 6 commands" candidate. The user
+   confirmed. The batch registry stays at 6 commands
+   (mindmap/flashcard/podcast/guide/infographic/tables).
 
-3. **NEW: 5 min output for collections** — when the source is a
-   multi-book collection (e.g. the 6-book 稻盛和夫 收藏版), does
-   `shoot-high short <notebook>` (per-book) make ONE 5-min video
-   for the whole collection, or ONE 5-min video PER sub-book?
-   My lean: ONE 5-min for the whole collection (user can
-   `--per-chapter` or do per-sub-book batch later). Confirm?
+3. **5 min output for collections** — **ONE 5-min video PER
+   sub-book, not one for the whole collection.** Reasoning: a
+   6-book 收藏版 doesn't compress to 5 min without losing every
+   book's identity. Better to emit 6 separate 5-min videos (one
+   per sub-book) and let the user pick which to publish.
+   Implementation: when `_detect_sub_books()` returns > 1 book,
+   the per-book mode loops over each sub-book range, slices the
+   text to that sub-book's characters, and produces one 5-min
+   script per sub-book. Output files:
+   `output/short-{subbook}-book.md` × N.
 
-4. **NEW: Default 纪录短片 platform** — should `shoot-high short
-   <notebook>` (per-book) auto-pick `bilibili` since 5 min exceeds
-   抖音's sweet spot, or stay on `douyin` and let the user override?
-   My lean: keep `douyin` as default (consistent with per-chapter
-   + the LLM will just produce content that performs better on
-   bilibili for 5 min, no big deal). Confirm?
+4. **Default 纪录短片 platform** — **小红书 (xiaohongshu).**
+   Reasoning: 小红书 is the sweet spot for 5 min — same audience
+   as 抖音 but more patient (avg watch time on 小红书 is higher
+   for 3-5 min content), and 小红书's "视频笔记" format
+   explicitly supports 5 min essays. The per-chapter mode stays
+   on 抖音 (60-90s short-video is 抖音's wheelhouse). The
+   `--platform` flag still accepts douyin / bilibili / xiaohongshu
+   / youtube for explicit override.
 
-5. **NEW: Variant reproducibility** — for per-chapter `--variants 3`,
-   each variant goes through the LLM. With `temperature=0` + same
-   `seed=42`, we expect 3 DIFFERENT outputs because the prompt
-   structure changes per variant. But are the variants "real
-   alternatives" (different hooks, different angles) or "3 random
-   near-duplicates"? The LLM tends toward the latter unless we
-   explicitly ask for differentiation in the prompt. Worth
-   confirming after v1 ships with a real test.
+5. **Variant reproducibility** — **Defer until v1 ships; will
+   test empirically.** Implementation note for the coder: if
+   `temperature=0 + seed=42` produces 3 identical outputs
+   (likely), the LLM call needs to vary the prompt per variant
+   (e.g. "approach 1: data-driven", "approach 2: story-driven",
+   "approach 3: contrarian"). Build the prompt-template
+   variation in, but don't over-engineer before measuring.
+
+## Final v1 spec (locked-in, 2026-06-16)
+
+| Item | Value |
+|---|---|
+| Default mode | per-book (5 min, 纪录短片) |
+| Sub-book handling | ONE 5-min video per sub-book (loops over `_detect_sub_books`) |
+| Default language | auto-detect (CJK vs Latin) |
+| Per-chapter default platform | 抖音 |
+| Per-book default platform | 小红书 |
+| Styles (per-chapter only) | 反常识 / 励志 / 学术 / 吐槽 |
+| Per-book style | 纪录短片 (single option in v1) |
+| TTS | NOT in v1 |
+| B-roll auto-gen | NOT in v1 |
+| .mp4 auto-gen | NOT in v1 |
+| Output formats | markdown / json / srt |
+| Variants | `--variants N` (1-5), each variant tries a different prompt angle |
+| Default duration | per-book=300s, per-chapter=60s |
+| Allowed duration range | per-book=60-600s, per-chapter=30-180s |
