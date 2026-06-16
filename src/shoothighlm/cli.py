@@ -1318,5 +1318,240 @@ def batch(
     rprint(summary.render())
 
 
+@main.command()
+@click.argument("notebook", type=click.Path(exists=True))
+@click.option(
+    "--chapter",
+    "chapter",
+    default=None,
+    help="Limit to one chapter (prefix match OK, e.g. '第 1 章'). "
+         "Implies --mode per_chapter.",
+)
+@click.option(
+    "--per-chapter",
+    "per_chapter",
+    is_flag=True,
+    help="Output one short per detected chapter. Implies --mode per_chapter.",
+)
+@click.option(
+    "--book",
+    "book",
+    is_flag=True,
+    help="Force per-book mode (default). One 5min video per sub-book for collections.",
+)
+@click.option(
+    "--style",
+    "style",
+    default=None,
+    type=click.Choice(["反常识", "励志", "学术", "吐槽", "纪录短片"]),
+    help="Script style. Per-chapter: 反常识/励志/学术/吐槽. "
+         "Per-book: 纪录短片 (only option, locked-in for v1).",
+)
+@click.option(
+    "--platform",
+    "platform",
+    default=None,
+    type=click.Choice(["douyin", "xiaohongshu", "bilibili", "youtube"]),
+    help="Target platform (default: xiaohongshu for per-book, douyin for per-chapter).",
+)
+@click.option(
+    "--language",
+    "language",
+    default="auto",
+    type=click.Choice(["auto", "zh", "en"]),
+    help="Output language. 'auto' detects from the source text.",
+)
+@click.option(
+    "--duration",
+    "duration_s",
+    default=None,
+    type=int,
+    help="Target duration in seconds. Default: 300 for per-book, 60 for per-chapter.",
+)
+@click.option(
+    "--variants",
+    "variants",
+    default=1,
+    type=click.IntRange(1, 5),
+    help="Generate N variants per (book|chapter) using different prompt angles. "
+         "1-5.",
+)
+@click.option(
+    "--format",
+    "fmt",
+    default="markdown",
+    type=click.Choice(["markdown", "json", "srt"]),
+    help="Output format. Default: markdown (human-readable).",
+)
+@click.option("--model", "model", default=None, help="Override chat model")
+@click.option(
+    "--use-local",
+    is_flag=True,
+    help="Use the local chat model (models.chat_local) instead of cloud",
+)
+def short(
+    notebook: str,
+    chapter: str,
+    per_chapter: bool,
+    book: bool,
+    style: str,
+    platform: str,
+    language: str,
+    duration_s: int,
+    variants: int,
+    fmt: str,
+    model: str,
+    use_local: bool,
+):
+    """Generate short-video script + visual direction from notebook PDFs.
+
+    Default: 1 个 5 分钟的"纪录短片" per sub-book (xiaohongshu 节奏).
+    With --chapter or --per-chapter: 1 个 60-90s 视频 per chapter
+    (抖音 节奏, 4 种风格).
+
+    Outputs Markdown / JSON / SRT — no audio/video (用户用 CapCut 后期).
+    See doc/feature-short-video.md for design rationale.
+    """
+    from .config import Config
+    from .pdf import parse_pdf
+    from .short import ShortVideoGenerator
+
+    notebook_path = Path(notebook)
+
+    # Concatenate all PDFs in the notebook (or filter by chapter)
+    pdfs = sorted(notebook_path.glob("*.pdf"))
+    if not pdfs:
+        rprint("[red]No PDFs found in notebook[/red]")
+        return
+
+    all_text_parts = []
+    sources: list[str] = []
+    for pdf in pdfs:
+        rprint(f"[blue]Processing:[/blue] {pdf.name}")
+        try:
+            pdf_text = "\n\n".join(t for t in parse_pdf(pdf) if t)
+        except Exception as e:
+            rprint(f"[yellow]⚠ Failed to parse {pdf.name}: {e}[/yellow]")
+            continue
+        if not pdf_text.strip():
+            rprint(f"[yellow]⚠ No text extracted from {pdf.name}[/yellow]")
+            continue
+        all_text_parts.append(pdf_text)
+        sources.append(pdf.name)
+    if not all_text_parts:
+        rprint("[yellow]⚠ No text extracted from notebook PDFs[/yellow]")
+        return
+    all_text = "\n\n".join(all_text_parts)
+
+    # Resolve mode
+    if chapter or per_chapter:
+        mode = "per_chapter"
+    else:
+        mode = "per_book"  # default
+
+    # Resolve chat model
+    config = Config()
+    chat_model = resolve_chat_model(config, use_local, model)
+
+    # Resolve style default based on mode
+    if style is None:
+        style = "纪录短片" if mode == "per_book" else "反常识"
+
+    # Build the generator
+    gen = ShortVideoGenerator(chat_model=chat_model)
+    try:
+        if per_chapter and not chapter:
+            # Per-chapter × N: loop over every detected chapter
+            from .mindmap import _detect_chapters
+            chapter_titles = _detect_chapters(all_text, max_titles=200)
+            if not chapter_titles:
+                rprint(
+                    "[yellow]⚠ No chapters detected in source text. "
+                    "Use --book for per-book mode instead.[/yellow]"
+                )
+                return
+            rprint(
+                f"[green]Per-chapter mode:[/green] {len(chapter_titles)} chapter(s) detected"
+            )
+            all_results = []
+            for ct in chapter_titles:
+                try:
+                    results = gen.generate(
+                        all_text,
+                        title=notebook_path.name,
+                        mode="per_chapter",
+                        chapter=ct,
+                        style=style,
+                        language=language,
+                        platform=platform,
+                        duration_s=duration_s,
+                        variants=variants,
+                    )
+                    all_results.extend(results)
+                except ValueError as e:
+                    rprint(f"  [yellow]Skip {ct!r}: {e}[/yellow]")
+                    continue
+        else:
+            # Single mode (per_book or per_chapter with --chapter)
+            if chapter and not per_chapter:
+                mode = "per_chapter"  # --chapter implies per_chapter
+            elif book and not chapter and not per_chapter:
+                mode = "per_book"  # --book explicit override
+            rprint(
+                f"[green]Mode:[/green] {mode} | "
+                f"[green]Style:[/green] {style} | "
+                f"[green]Duration:[/green] {duration_s or (300 if mode == 'per_book' else 60)}s"
+            )
+            all_results = gen.generate(
+                all_text,
+                title=notebook_path.name,
+                mode=mode,
+                chapter=chapter,
+                style=style,
+                language=language,
+                platform=platform,
+                duration_s=duration_s,
+                variants=variants,
+            )
+
+        if not all_results:
+            rprint("[yellow]⚠ No scripts generated[/yellow]")
+            return
+
+        # Write outputs
+        output_dir = notebook_path / "output"
+        output_dir.mkdir(exist_ok=True)
+        ext = {"markdown": ".md", "json": ".json", "srt": ".srt"}[fmt]
+
+        for i, (script, usage) in enumerate(all_results):
+            # Filename: short-{book-or-chapter-stem}.md (or short-var1.md etc.)
+            base_stem = "".join(
+                c for c in script.title if c.isalnum() or c in " _-[]"
+            ).strip()
+            base_stem = base_stem[:50] or "short"
+            if variants > 1:
+                stem = f"short-{base_stem}-v{i + 1}"
+            else:
+                stem = f"short-{base_stem}"
+            output_path = output_dir / f"{stem}{ext}"
+            if fmt == "markdown":
+                content = script.to_markdown()
+            elif fmt == "json":
+                content = json.dumps(script.to_dict(), ensure_ascii=False, indent=2)
+            elif fmt == "srt":
+                content = script.to_srt()
+            output_path.write_text(content, encoding="utf-8")
+            rprint(
+                f"[green]✓ Saved:[/green] {output_path}  "
+                f"[dim]({usage.input_tokens + usage.output_tokens:,} tokens)[/dim]"
+            )
+
+        rprint(
+            f"\n[green]Done:[/green] {len(all_results)} script(s) written to {output_dir}"
+        )
+    finally:
+        gen.close()
+
+
 if __name__ == "__main__":
     main()

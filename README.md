@@ -179,6 +179,31 @@ shoot-high tables ./my-books --format json
 shoot-high tables ./my-books --format html
 ```
 
+### Short video scripts
+
+Generate 60-90s (per-chapter) or 5-min (per-book) video scripts with
+visual direction. Output is markdown / JSON / SRT — no audio/video
+(finish in CapCut / 剪映). See `doc/feature-short-video.md`.
+
+```bash
+# Default: 1 个 5 分钟"纪录短片" per sub-book (xiaohongshu 节奏)
+shoot-high short ~/my-books
+
+# Per-chapter: 1 个 60-90s 视频 per chapter
+shoot-high short ~/my-books --per-chapter
+
+# Single chapter
+shoot-high short ~/my-books --chapter "第 1 章"
+shoot-high short ~/my-books --chapter "第 1 章" --style 吐槽
+
+# 5min → 90s (per-book compressed)
+shoot-high short ~/my-books --book --duration 90
+
+# Output formats
+shoot-high short ~/my-books --format json     # for tooling
+shoot-high short ~/my-books --format srt      # subtitle file
+```
+
 ### A note on `--full`
 
 Add `--full` to any of the 6 LLM commands (`chat` is excluded — it uses
@@ -436,7 +461,7 @@ prompts on M1 Max 64GB).
 
 ✅ **Phase 3 (P2+P3) Complete** — Podcast, TTS, Notebook Guides, and Infographics all shipped!
 
-**Test Coverage:** 411 tests passing, 93.81% coverage ✅
+**Test Coverage:** 446 tests passing, 93.13% coverage ✅
 
 | Phase | Status | Features |
 |-------|--------|----------|

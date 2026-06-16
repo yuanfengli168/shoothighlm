@@ -289,6 +289,7 @@ SHOOTHIGHLM_PDF_BACKEND=docling shoot-high index ~/my-books
 | 2026-06-15 (LLM call centralization + token logs) | 94.39% ✅ | 371 tests，新增 `tests/test_llm.py` (6) 和 `tests/test_token_log.py` (5) |
 | 2026-06-15 (batch 自动化) | 94.06% ✅ | 403 tests，新增 `tests/test_batch.py` (32) |
 | 2026-06-15 (mindmap 确定性 + 第N章 verbatim) | **93.81%** ✅ | 411 tests，新增 7 个 `_detect_chapters` 测试 + 1 个 `call_ollama` 确定性测试 |
+| 2026-06-16 (short-video 脚本生成) | **93.13%** ✅ | 446 tests，新增 `src/shoothighlm/short.py` + 21 个 unit test + 13 个 CLI test + 1 个 nested-chapter regression fix |
 
 `test_cli_helpers.py`、`test_use_full_flag.py`、`test_pdf_embedding_edges.py`、
 `test_cli_cloud_errors.py`、`test_cli_generator_errors.py` 共 64 个新测试。

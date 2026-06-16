@@ -318,10 +318,14 @@ def _detect_chapters(text: str, max_titles: int = 30) -> List[str]:
         num, kind, title = m.group(1), m.group(2), m.group(3).strip()
         # Skip clearly false positives:
         #   - Title is just digits / punctuation
-        #   - Title contains another chapter marker (nested — broken OCR)
+        #   - Title contains another chapter marker (nested — broken OCR).
+        #     The regex below uses a leading 第 + ARABIC digit (not
+        #     Chinese numberals) to avoid false positives on titles
+        #     like "第一章标题" where "一" is a Chinese numeral that
+        #     should NOT be treated as a nested chapter marker.
         if not title or len(title) < 2:
             continue
-        if re.search(r"第\s*[0-9一二三四五六七八九十]+\s*章", title):
+        if re.search(r"第\s*[0-9]+\s*章", title):
             continue
         full = f"第 {num} {kind} {title}"
         # Normalize whitespace for dedup

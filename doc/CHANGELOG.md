@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Short video scripts (`shoot-high short`)
+
+#### Added
+- `src/shoothighlm/short.py` with `ShortVideoGenerator` that produces
+  short-video scripts (no audio/video) for use in CapCut / 剪映.
+  Two modes:
+  - `per_book` (default, 5 min 纪录短片) — 6-act structure
+    (cold-open, person, method, data, wrap, one-liner).
+  - `per_chapter` (60-90s) — 4-act structure (hook, conflict,
+    turn, payoff) with 4 styles (反常识/励志/学术/吐槽).
+- `shoot-high short` subcommand with these flags:
+  - `--chapter "第 1 章"` — limit to one chapter (prefix match).
+  - `--per-chapter` — output one script per detected chapter.
+  - `--book` — force per-book mode (default).
+  - `--style {反常识|励志|学术|吐槽|纪录短片}` — script style.
+  - `--platform {douyin|xiaohongshu|bilibili|youtube}` — pacing
+    (default: xiaohongshu for per-book, douyin for per-chapter).
+  - `--language {auto|zh|en}` — output language (auto-detected
+    from CJK vs Latin ratio in source).
+  - `--duration N` — override default (300s for per-book, 60s
+    for per-chapter).
+  - `--variants N` — generate N variants with different
+    prompt angles (1-5).
+  - `--format {markdown|json|srt}` — output format.
+  - `--model`, `--use-local` — forwarded to `resolve_chat_model()`.
+- Output files in `<notebook>/output/short-*.{md,json,srt}`. For
+  multi-book collections, per-book mode produces one 5-min
+  video per sub-book (e.g. `short-干法-book.md`, `short-领导者的资质-book.md`).
+- `tests/test_short.py` with 21 tests covering language detection,
+  per-book/per-chapter paths, variants, JSON/SRT output, malformed
+  JSON, multi-book detection.
+- `tests/test_cli_short.py` with 13 tests for the CLI surface.
+- `doc/feature-short-video.md` — full design doc with samples
+  and rationale.
+
+#### Fixed
+- `_detect_chapters` regression: chapter titles containing Chinese
+  numerals (e.g. `第一章标题`) were incorrectly filtered as
+  "nested chapter markers". The regex now only flags **arabic
+  numerals** as potential nested markers, so Chinese-numbered
+  chapter titles are preserved.
+
+#### Test Coverage
+- **446 tests passing**, **93.13% coverage**.
+
 ### Batch automation (`shoot-high batch`)
 
 #### Added

@@ -695,3 +695,18 @@ def test_detect_chapters_skips_nested_markers():
     # We want at most the outer one captured.
     titles = _detect_chapters(text)
     assert len(titles) <= 1
+
+
+def test_detect_chapters_chinese_numbered_title_not_filtered():
+    """Regression: '第 一 章 标题' must NOT be filtered as 'nested'.
+
+    The previous regex `[0-9一二...]` matched the Chinese numeral
+    '一' in '第一章标题' and incorrectly skipped it. Should be
+    kept.
+    """
+    from shoothighlm.mindmap import _detect_chapters
+
+    text = "第 一 章 领导者的资质\n"
+    titles = _detect_chapters(text)
+    assert len(titles) == 1
+    assert "领导者的资质" in titles[0]
